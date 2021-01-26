@@ -27,7 +27,7 @@ Take *number* as *outputname*
 
 [//]: # (&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;)
 
-#Dependencies
+# Dependencies
 * Perl 5
 * Getopt::Long
 * LWP >=5.64
