@@ -32,20 +32,38 @@
 use strict;
 use sigtrap;
 
+#TODO optional warning if output columns are unbalanced
+
 open IN, $ARGV[0];
 chomp(my @lines = <IN>);
-my $preamble = '';
+my $preamble = "use strict;use warnings;use sigtrap;\n";
 my $bracketOpener = '';
-my $stoppingStatement = '';
 my $startingStatement = '';
+my $stoppingStatement = '';
+my $skippingStatement = '';
 my $closingBrackets = "\n";
 my $outputStatement = '';
 my @vNames = ('a','b','c','d','e','f','g','h','i','j','k','l','m','n','o','p','r','s','t','u','v','w','x','y','z','aa','ab','ac','ad','ae','af','ag','ah','ai','aj','ak','al','am','an','ao','ap'); #interim solution
 my $vindex = 0;   # put some... have you seen the movie?
-my $readfile;
 if ($lines[0] =~ /^Reading /) {
-	$readfile = $lines[0];
-	$readfile =~ s/^Reading //;
+	#TODO we probably want to silently chop trailing white space, or warn about it
+	if ($lines[0] =~ /^Reading https?\:\/\//) {
+		my $url = $lines[0];
+		$url =~ s/^Reading //;
+		$preamble .= 'use LWP 5.64;'."\n"
+			    .'my $browser = LWP::UserAgent->new;'."\n"
+			    .'$browser->agent("Mozilla/5.0");'."\n"
+			    .'my $url = '."'".$url."'".';'."\n"
+			    .'my $res = $browser->get($url);'."\n"
+			    .'die "Error at $url\n", $res->status_line, "\n Aborting\n" unless $res->is_success;'."\n"
+			    .'my @lines = split /\n/, $res->decoded_content;'."\n"
+		            .'die "Could not get $url" unless @lines;'."\n";
+	} else {
+		my $readfile;
+		$readfile = $lines[0];
+		$readfile =~ s/^Reading //;
+		$preamble .=  'open IN, "'.$readfile.'";'."\n".'chomp(my @lines = <IN>);'."\n";
+	}
 } else {
 	die 'No "Reading" instruction found in first line.'."\n";
 }
@@ -56,15 +74,14 @@ unless ($lines[@lines-1] =~ /^Format as /) {
 unless ($lines[@lines-1] =~ /^Format as (tsv\+header|perl)$/) {
 	die "Specified output format not known.\n";
 }
-#TODO add "Output" parameter that allows "perl" as an option, or "data" - or possibly "python", later
+#TODO add "Output" parameter that allows "perl" as an option, or "data" - or possibly "python", "ruby", "java" etc. later - to separate specifying data format from forcing code output
 my $outputFormat;
 $outputFormat = (split /^Format as /, $lines[@lines-1])[1];
 
 my $curVName = $vNames[$vindex];
 $vindex++;
 my $splitNum = 1;
-$preamble .=    'open IN, "'.$readfile.'";'."\n".'chomp(my @lines = <IN>);'."\n"
-	       .'my $processing = 0;'      ."\n"
+$preamble .=    'my $processing = 0;'      ."\n"
 	       .'my %capturedData;'        ."\n"
 	       .'my $outputRowCount = 0;'  ."\n";
 $bracketOpener .= 'for (my $'.$curVName.' = 0; $'.$curVName.' < @lines; $'.$curVName.'++) {'."\n";
@@ -80,7 +97,8 @@ my @fieldNames;
 my @RefactorThisArray;
 my $regex;
 
-#TODO possibly automatically insert missing "Matching" statements before "Splitting" 
+# TODO implement $lookWhere
+
 for (my $i = 1; $i < (@lines-1); $i++) {
 	if      ($lines[$i] =~ /^\s*Starting at \//) {
 		if ($lines[$i] =~ /\/$/) {
@@ -107,7 +125,55 @@ for (my $i = 1; $i < (@lines-1); $i++) {
 		} else {
 			die 'Illegal end to "Stopping" statement on line '.($i+1).".\n";
 		}
-	} elsif ($lines[$i] =~ /^\s*Matching \//) {
+	} elsif ($lines[$i] =~ /^\s*Skipping [1-9][0-9]* whenever \//) {
+		if ($lines[$i] =~ /\/$/) {
+			my $regex = $lines[$i];
+			$regex =~ s/^\s*Skipping [1-9][0-9]* whenever \///;
+			$regex =~ s/\/$//;
+			my @array = split /Skipping | whenever /, $lines[$i];
+			#TODO investigate why skippingStatement did not work
+			$startingStatement .= "\t".'if ($lines[$'.$curVName.'] =~ /'.$regex.'/) {'."\n"
+					    ."\t\t".'$'.$curVName.' += '.$array[1].";\n"
+					    ."\t}\n";
+		} else {
+			die 'Illegal end to "Skipping" statement on line '.($i+1).".\n";
+		}
+	} elsif ($lines[$i] =~ /^\s*Looking [1-9][0-9]* after \//) {   #TODO also "before"
+		# theoretically, "Looking 0 after /regex/" is the same as "Matching /regex/"
+		# but the above currently forbids 0 as a value - perhaps it should accept it?
+		if ($lines[$i] =~ /\/$/) {
+			if ($lines[$i+1] =~ /^\s*(Splitting|Matching) /) {
+				my $regex = $lines[$i];
+				$regex =~ s/^\s*Looking [1-9][0-9]* after \///;
+				$regex =~ s/\/$//;
+				$startingStatement .= "\t".'if ($lines[$'.$curVName.'] =~ /'.$regex.'/) {'."\n";
+				my @array = split /Looking | after /, $lines[$i];
+				my $lookWhere = $array[1];
+				$closingBrackets = '}'.$closingBrackets;
+				#TODO this would need a more local arrangement to accommodate several Looking statements
+				if ($lines[$i+1] =~ /^\s*Splitting /) {
+					$isCutStillOpen = 1; # cutting must be followed by take
+					my $regex2 = $lines[$i+1];
+					$regex2 =~ s/^\s*Splitting at \///;
+					$regex2 =~ s/\/$//;
+					$startingStatement .= "\t".'if ($lines[$'.$curVName.'+'.$lookWhere.'] =~ /'.$regex2.'/) {'."\n"
+							     ."\t\t".'my @array'.$splitNum.' = split /'.$regex2.'/, $lines[$'.$curVName.'+'.$lookWhere.'];'."\n"
+							     ."\t\t".'$outputRowCount++;'."\n";
+					$closingBrackets = '}'.$closingBrackets;
+				       	#TODO this would need a more local arrangement to accommodate several Splitting statements
+					$splitNum++;
+				} elsif ($lines[$i+1] =~ /^\s*Matching /) {
+					#TODO
+				}
+				$i++;
+			} else {
+				die '"Looking" on line '.($i+1).' must be followed by "Matching" or "Splitting" on the next line.'."\n";
+			}
+		} else {
+			die 'Illegal end to "Looking" statement on line '.($i+1).".\n";
+		}
+	} elsif ($lines[$i] =~ /^\s*Matching \//) {   # probably the least useful context
+						      # as Splitting can usually do its job
 		if ($lines[$i] =~ /\/$/) {
 			my $regex = $lines[$i];
 			$regex =~ s/^\s*Matching \///;
@@ -130,21 +196,34 @@ for (my $i = 1; $i < (@lines-1); $i++) {
 			$regex =~ s/\/$//;
 			$startingStatement .= "\t".'if ($lines[$'.$curVName.'] =~ /'.$regex.'/) {'."\n"
 					     ."\t\t".'my @array'.$splitNum.' = split /'.$regex.'/, $lines[$'.$curVName.'];'."\n"
-					     ."\t\t".'$outputRowCount++;'."\n";
+					     ."\t\t".'$outputRowCount++;'."\n"; #TODO this causes bugs, better to count actual elements and also only print those that are defined - fix this in the output printing!
 			$closingBrackets = '}'.$closingBrackets; #TODO this would need a more local arrangement to accommodate several Splitting statements
 			$splitNum++;
 		} else {
 			die 'Illegal end to "Splitting" statement on line '.($i+1).".\n";
 		}
-	} elsif ($isCutStillOpen && $lines[$i] =~ /^\s*Take [1-9][0-9]* as [A-Za-z][A-Za-z0-9]*$/) {
+	} elsif ($isCutStillOpen && $lines[$i] =~ /^\s*Take [0-9]+ as [A-Za-z][A-Za-z0-9]*$/) {
 		my @array = split /Take | as /, $lines[$i];
 		push @fieldNames, $array[2];
-		$startingStatement .= "\t\t".'push @{ $capturedData{'.$array[2].'} }, $array'.($splitNum-1).'['.$array[1].'];'."\n";
+		$startingStatement .= "\t\t".'push @{ $capturedData{'.$array[2].'} }, $array'.($splitNum-1).'['.$array[1].'] if defined($array'.($splitNum-1).'['.$array[1].']);'."\n";
+	} elsif ($lines[$i] =~ /^\s*Capture \//) {
+		#TODO switch to using Take instead of Capture
+		if ($lines[$i] =~ /\/ as [A-Za-z][A-Za-z0-9]*$/) {
+			my @array1 = split /Capture \//, $lines[$i];
+			my @array2 = split /\/ as /, $array1[1];
+			my $regex = join '/ as ', @array2[0..(@array2-2)];
+			push @fieldNames, $array2[$#array2];
+			$startingStatement .= "\t".'if ($lines[$'.$curVName.'] =~ /'.$regex.'/) {'."\n"
+					     ."\t\t".'push @{ $capturedData{'.$array2[$#array2].'} }, substr($lines[$'.$curVName.'], $-[0], $+[0] - $-[0]);'."\n\t\t".'# Note about the above: the expression contained in substr()'."\n\t\t".'# is some slightly obscure Perl magic that refers to the last-matched string'."\n"
+					     ."\t}\n";
+		} else {
+			die 'Illegal end to "Capture" statement on line '.($i+1).".\n";
+		}
 	} else {
 		if ($isCutStillOpen) {
 			die 'Line '.($i+1).' either did not provide a Take statement, or it was not correctly formatted. The Take statement should be written as "Take [number] as [name]". You must provide a name for every field.'."\n";
 		} else {
-			die 'Line '.($i+1).' did not match any expected expression (Starting, Stopping, Matching, Cutting).'."\n";
+			die 'Line '.($i+1).' did not match any expected expression (Starting, Stopping, Matching, Splitting, Capture).'."\n";
 		}
 	}
 }
@@ -159,7 +238,7 @@ if (@fieldNames) {
 }
 my $outputStatement = 'my @outputLines;'."\n"
 		     .'for (my $i = 0; $i < $outputRowCount; $i++) {'."\n"
-		     ."\t".'@outputLines[$i] = "";'."\n"
+		     ."\t".'$outputLines[$i] = "";'."\n"
 		     .'}'."\n"
 		     .'for (my $i = 0; $i < $outputRowCount; $i++) {'."\n"
 		     ."\t".'foreach (@fieldNames) {'."\n"
@@ -169,11 +248,10 @@ my $outputStatement = 'my @outputLines;'."\n"
 		     .'foreach (@fieldNames) { print "$_\t" }'."\n"
 		     .'print "\n";'
 		     .'foreach (@outputLines) { print $_."\n"; }';
-my $output = $preamble.$bracketOpener.$stoppingStatement.$startingStatement.$closingBrackets.$outputStatement;
+my $output = $preamble.$bracketOpener.$stoppingStatement.$startingStatement.$skippingStatement.$closingBrackets.$outputStatement;
 if ($outputFormat eq 'perl') {
 	print $output;
 	print "\n";
 } elsif ($outputFormat eq 'tsv+header') { 
 	eval $output;
 }
-
