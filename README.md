@@ -9,6 +9,8 @@ Design priorities:
 * Experimental introduction of "contexts" to replace/unify control and parameters
 
 # Commands ("verbs")
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;*This is an introductory list. More than shown here is currently supported and will be added with documentation and examples in due course.*
+
 * Reading *filename*
   * This tells chew which file to open. You may specify an http or https URL instead (experimental, dependencies may change).
 
