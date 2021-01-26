@@ -1,3 +1,5 @@
+#!/usr/bin/perl
+# 
 # This program is intended to be a high-level programming language and
 # code generator with heavy emphasis on regular expressions
 # and anticipated use in data scraping.
@@ -27,8 +29,6 @@
 #
 # To contact me, find my contact details via my personal website.
 
-
-
 use strict;
 use sigtrap;
 
@@ -55,7 +55,7 @@ if ($lines[0] =~ /^Reading /) {
 			    .'$browser->agent("Mozilla/5.0");'."\n"
 			    .'my $url = '."'".$url."'".';'."\n"
 			    .'my $res = $browser->get($url);'."\n"
-			    .'die "Error at $url\n", $res->status_line, "\n Aborting\n" unless $res->is_success;'."\n"
+			    .'die "ERROR at $url\n", $res->status_line, "\n Aborting\n" unless $res->is_success;'."\n"
 			    .'my @lines = split /\n/, $res->decoded_content;'."\n"
 		            .'die "Could not get $url" unless @lines;'."\n";
 	} else {
@@ -65,14 +65,14 @@ if ($lines[0] =~ /^Reading /) {
 		$preamble .=  'open IN, "'.$readfile.'";'."\n".'chomp(my @lines = <IN>);'."\n";
 	}
 } else {
-	die 'No "Reading" instruction found in first line.'."\n";
+	die 'ERROR: No "Reading" instruction found in first line.'."\n";
 }
 
 unless ($lines[@lines-1] =~ /^Format as /) {
-	die "No output format specified in last line.\n";
+	die "ERROR: No output format specified in last line.\n";
 }
 unless ($lines[@lines-1] =~ /^Format as (tsv\+header|perl)$/) {
-	die "Specified output format not known.\n";
+	die "ERROR: Specified output format not known.\n";
 }
 #TODO add "Output" parameter that allows "perl" as an option, or "data" - or possibly "python", "ruby", "java" etc. later - to separate specifying data format from forcing code output
 my $outputFormat;
@@ -87,24 +87,67 @@ $preamble .=    'my $processing = 0;'      ."\n"
 $bracketOpener .= 'for (my $'.$curVName.' = 0; $'.$curVName.' < @lines; $'.$curVName.'++) {'."\n";
 $closingBrackets = '}'.$closingBrackets;
 
-my $indentLevel = 1;
+my $indentLevel = 0;
 my $hasStartStatement = 0;
 my $isMatchStillOpen = 0;
-my $isCutStillOpen = 0;
 my %stillAllowed = ('Starting',1,'Stopping,1'); # only one of each of these
 my %requireOneOf = ('Starting',1,'Stopping',1,'Matching',1,'Cutting',1);
 my @fieldNames;
 my @RefactorThisArray;
 my $regex;
 
+my $indentPattern = '';
+my $firstIndentLine;
+for (my $i = 1; $i < (@lines-1); $i++) {
+	if ($lines[$i] =~ /^\s/) {
+		$firstIndentLine = $i;
+		my @linechars = split //, $lines[$i];
+		for (my $a = 0; $a < @linechars; $a++) {
+			if ($linechars[$a] =~ /\s/) {
+				$indentPattern .= $linechars[$a];
+			} else {
+				last;
+			}
+		}
+		last;
+	}
+}
+
+# for now and for simplicity, enforce that only one whitespace character be used
+my $indentLength = length($indentPattern);
+my @indentSplit = split //, $indentPattern;
+if ($indentLength > 1) {
+	for (my $j = 1; $j < @indentSplit; $j++) {
+		if ($indentSplit[$j] ne $indentSplit[$j-1]) {
+			die 'ERROR: There was a mix of different whitespace characters used at the first indent, on line '.$firstIndentLine.'. Please use the same whitespace character for all indenting (space or tab, not both).'."\n";
+		}
+	}
+}
+my $indentChar = $indentSplit[0];
+
+my @indentDepth;
+for (my $i = 0; $i < @lines; $i++) {
+	if ($lines[$i] =~ /^$indentChar+/) {
+		my $rawIndentLen = length( substr ( $lines[$i], $-[0], $+[0]-$-[0] ) );
+		if ($rawIndentLen % $indentLength) {
+			die 'ERROR: Indent length on line '.($i+1).' is not a multiple of the indent length defined in the first indented line, line '.($firstIndentLine+1).".\n";
+		} else {
+			$indentDepth[$i] = $rawIndentLen / $indentLength;	
+		}
+	} else {
+		$indentDepth[$i] = 0;
+	}
+}
+
+my $lookWhere;
 # TODO implement $lookWhere
+
+# TODO test sanitiseRegex
 
 for (my $i = 1; $i < (@lines-1); $i++) {
 	if      ($lines[$i] =~ /^\s*Starting at \//) {
 		if ($lines[$i] =~ /\/$/) {
-			my $regex = $lines[$i];
-			$regex =~ s/^\s*Starting at \///;
-			$regex =~ s/\/$//;
+			my $regex = extractRegex('Starting at', $lines[$i]);
 			$startingStatement .= "\t".'if ($lines[$'.$curVName.'] =~ /'.$regex.'/) {'."\n"
 						   ."\t\t".'$processing = 1;'."\n"
 						   ."\t".'}'."\n"
@@ -112,72 +155,34 @@ for (my $i = 1; $i < (@lines-1); $i++) {
 			$closingBrackets = '}'.$closingBrackets;
 			$hasStartStatement = 1;
 		} else {
-			die 'Illegal end to "Starting" statement on line '.($i+1).".\n";
+			die 'ERROR: Illegal end to "Starting" statement on line '.($i+1).".\n";
 		}
 	} elsif ($lines[$i] =~ /^\s*Stopping at \//) {
 		if ($lines[$i] =~ /\/$/) {
-			my $regex = $lines[$i];
-			$regex =~ s/^\s*Stopping at \///;
-			$regex =~ s/\/$//;
+			my $regex = extractRegex('Stopping at', $lines[$i]);
 			$stoppingStatement .= "\t".'if ($lines[$'.$curVName.'] =~ /'.$regex.'/) {'."\n"
 						   ."\t\t".'last;'."\n"
 						   ."\t".'}'."\n";
 		} else {
-			die 'Illegal end to "Stopping" statement on line '.($i+1).".\n";
+			die 'ERROR: Illegal end to "Stopping" statement on line '.($i+1).".\n";
 		}
 	} elsif ($lines[$i] =~ /^\s*Skipping [1-9][0-9]* whenever \//) {
 		if ($lines[$i] =~ /\/$/) {
 			my $regex = $lines[$i];
 			$regex =~ s/^\s*Skipping [1-9][0-9]* whenever \///;
 			$regex =~ s/\/$//;
+			$regex = sanitiseRegex($regex);
 			my @array = split /Skipping | whenever /, $lines[$i];
-			#TODO investigate why skippingStatement did not work
 			$startingStatement .= "\t".'if ($lines[$'.$curVName.'] =~ /'.$regex.'/) {'."\n"
 					    ."\t\t".'$'.$curVName.' += '.$array[1].";\n"
 					    ."\t}\n";
 		} else {
-			die 'Illegal end to "Skipping" statement on line '.($i+1).".\n";
-		}
-	} elsif ($lines[$i] =~ /^\s*Looking [1-9][0-9]* after \//) {   #TODO also "before"
-		# theoretically, "Looking 0 after /regex/" is the same as "Matching /regex/"
-		# but the above currently forbids 0 as a value - perhaps it should accept it?
-		if ($lines[$i] =~ /\/$/) {
-			if ($lines[$i+1] =~ /^\s*(Splitting|Matching) /) {
-				my $regex = $lines[$i];
-				$regex =~ s/^\s*Looking [1-9][0-9]* after \///;
-				$regex =~ s/\/$//;
-				$startingStatement .= "\t".'if ($lines[$'.$curVName.'] =~ /'.$regex.'/) {'."\n";
-				my @array = split /Looking | after /, $lines[$i];
-				my $lookWhere = $array[1];
-				$closingBrackets = '}'.$closingBrackets;
-				#TODO this would need a more local arrangement to accommodate several Looking statements
-				if ($lines[$i+1] =~ /^\s*Splitting /) {
-					$isCutStillOpen = 1; # cutting must be followed by take
-					my $regex2 = $lines[$i+1];
-					$regex2 =~ s/^\s*Splitting at \///;
-					$regex2 =~ s/\/$//;
-					$startingStatement .= "\t".'if ($lines[$'.$curVName.'+'.$lookWhere.'] =~ /'.$regex2.'/) {'."\n"
-							     ."\t\t".'my @array'.$splitNum.' = split /'.$regex2.'/, $lines[$'.$curVName.'+'.$lookWhere.'];'."\n"
-							     ."\t\t".'$outputRowCount++;'."\n";
-					$closingBrackets = '}'.$closingBrackets;
-				       	#TODO this would need a more local arrangement to accommodate several Splitting statements
-					$splitNum++;
-				} elsif ($lines[$i+1] =~ /^\s*Matching /) {
-					#TODO
-				}
-				$i++;
-			} else {
-				die '"Looking" on line '.($i+1).' must be followed by "Matching" or "Splitting" on the next line.'."\n";
-			}
-		} else {
-			die 'Illegal end to "Looking" statement on line '.($i+1).".\n";
+			die 'ERROR: Illegal end to "Skipping" statement on line '.($i+1).".\n";
 		}
 	} elsif ($lines[$i] =~ /^\s*Matching \//) {   # probably the least useful context
 						      # as Splitting can usually do its job
 		if ($lines[$i] =~ /\/$/) {
-			my $regex = $lines[$i];
-			$regex =~ s/^\s*Matching \///;
-			$regex =~ s/\/$//;
+			my $regex = extractRegex('Matching',$lines[$i]);
 			$startingStatement .= "\t".'if (';
 			if ($hasStartStatement) {
 				$startingStatement .= '$processing && '
@@ -186,45 +191,76 @@ for (my $i = 1; $i < (@lines-1); $i++) {
 			$closingBrackets = '}'.$closingBrackets;
 			$isMatchStillOpen = 1; # matching must be followed by cut (or take?)
 		} else {
-			die 'Illegal end to "Matching" statement on line '.($i+1).".\n";
+			die 'ERROR: Illegal end to "Matching" statement on line '.($i+1).".\n";
 		}
-	} elsif ($lines[$i] =~ /^\s*Splitting at \//) {   #TODO indent counting to determine if cut has been closed
-		if ($lines[$i] =~ /\/$/) {
-			$isCutStillOpen = 1; # cutting must be followed by take
-			my $regex = $lines[$i];
-			$regex =~ s/^\s*Splitting at \///;
-			$regex =~ s/\/$//;
-			$startingStatement .= "\t".'if ($lines[$'.$curVName.'] =~ /'.$regex.'/) {'."\n"
-					     ."\t\t".'my @array'.$splitNum.' = split /'.$regex.'/, $lines[$'.$curVName.'];'."\n"
-					     ."\t\t".'$outputRowCount++;'."\n"; #TODO this causes bugs, better to count actual elements and also only print those that are defined - fix this in the output printing!
-			$closingBrackets = '}'.$closingBrackets; #TODO this would need a more local arrangement to accommodate several Splitting statements
-			$splitNum++;
-		} else {
-			die 'Illegal end to "Splitting" statement on line '.($i+1).".\n";
-		}
-	} elsif ($isCutStillOpen && $lines[$i] =~ /^\s*Take [0-9]+ as [A-Za-z][A-Za-z0-9]*$/) {
-		my @array = split /Take | as /, $lines[$i];
-		push @fieldNames, $array[2];
-		$startingStatement .= "\t\t".'push @{ $capturedData{'.$array[2].'} }, $array'.($splitNum-1).'['.$array[1].'] if defined($array'.($splitNum-1).'['.$array[1].']);'."\n";
 	} elsif ($lines[$i] =~ /^\s*Capture \//) {
 		#TODO switch to using Take instead of Capture
 		if ($lines[$i] =~ /\/ as [A-Za-z][A-Za-z0-9]*$/) {
 			my @array1 = split /Capture \//, $lines[$i];
 			my @array2 = split /\/ as /, $array1[1];
 			my $regex = join '/ as ', @array2[0..(@array2-2)];
+			$regex = sanitiseRegex($regex);
 			push @fieldNames, $array2[$#array2];
 			$startingStatement .= "\t".'if ($lines[$'.$curVName.'] =~ /'.$regex.'/) {'."\n"
 					     ."\t\t".'push @{ $capturedData{'.$array2[$#array2].'} }, substr($lines[$'.$curVName.'], $-[0], $+[0] - $-[0]);'."\n\t\t".'# Note about the above: the expression contained in substr()'."\n\t\t".'# is some slightly obscure Perl magic that refers to the last-matched string'."\n"
 					     ."\t}\n";
 		} else {
-			die 'Illegal end to "Capture" statement on line '.($i+1).".\n";
+			die 'ERROR: Illegal end to "Capture" statement on line '.($i+1).".\n";
+		}
+	} elsif ($lines[$i] =~ /^\s*Splitting at \//) {   #TODO indent counting to determine if cut has been closed
+		if ($lines[$i] =~ /\/$/) {
+			my $regex = extractRegex('Splitting at',$lines[$i]);
+			my $masterIndent = $indentDepth[$i];
+			my $takeChunkPerlCode;
+			for (my $j = $i+1; $j < @lines; $j++) {
+				if ($indentDepth[$j] <= $masterIndent) {
+					($takeChunkPerlCode, my @tempFieldNames) = processTakeChunk(($i+1), $splitNum, @lines[($i+1)..($j-1)]);
+					push @fieldNames, @tempFieldNames;
+					$i = $j-1;
+					last;
+				}
+			}
+			$startingStatement .= "\t".'if ($lines[$'.$curVName.'] =~ /'.$regex.'/) {'."\n"
+					     ."\t\t".'my @array'.$splitNum.' = split /'.$regex.'/, $lines[$'.$curVName.'];'."\n"
+					     ."\t\t".'$outputRowCount++;'."\n"; #TODO this causes bugs, better to count actual elements and also only print those that are defined - fix this in the output printing!
+			$startingStatement .= $takeChunkPerlCode.'}';
+			$splitNum++;
+		} else {
+			die 'ERROR: Illegal end to "Splitting" statement on line '.($i+1).".\n";
+		}
+	} elsif ($lines[$i] =~ /^\s*Locating around \//) {
+		if ($lines[$i] =~ /\/$/) {
+			if ($lines[$i+1] =~ /^\s*(At) /) {
+				my $regex = extractRegex('Locating around', $lines[$i]);
+				$startingStatement .= "\t".'if ($lines[$'.$curVName.'] =~ /'.$regex.'/) {'."\n";
+				$closingBrackets = '}'.$closingBrackets;
+				my $masterIndent = $indentDepth[$i];
+				for (my $j = $i+1; $j < @lines; $j++) {
+					if ($indentDepth[$j] > $masterIndent) {
+						if ($lines[$j] =~ /^\s*Splitting /) {
+							#TODO first confirm that an 'At' is open
+							my $regex2 = extractRegex('Splitting at', $lines[$j]);
+							$startingStatement .= "\t".'if ($lines[$'.$curVName.'+'.$lookWhere.'] =~ /'.$regex2.'/) {'."\n"
+									     ."\t\t".'my @array'.$splitNum.' = split /'.$regex2.'/, $lines[$'.$curVName.'+'.$lookWhere.'];'."\n"
+									     ."\t\t".'$outputRowCount++;'."\n";
+							$closingBrackets = '}'.$closingBrackets;
+							$splitNum++;
+						} elsif ($lines[$i+2] =~ /^\s*Matching /) {
+							#TODO
+						}
+					} else {
+						$i = $j - 1;
+						last;
+					}
+				}
+			} else {
+				die 'ERROR: "Locating" on line '.($i+1).' must be followed by "At" statements.'."\n";
+			}
+		} else {
+			die 'ERROR: Illegal end to "Locating" statement on line '.($i+1).".\n";
 		}
 	} else {
-		if ($isCutStillOpen) {
-			die 'Line '.($i+1).' either did not provide a Take statement, or it was not correctly formatted. The Take statement should be written as "Take [number] as [name]". You must provide a name for every field.'."\n";
-		} else {
-			die 'Line '.($i+1).' did not match any expected expression (Starting, Stopping, Matching, Splitting, Capture).'."\n";
-		}
+		die 'ERROR: Line '.($i+1).' did not match any expected expression (Starting, Stopping, Matching, Splitting, Capture).'."\n";
 	}
 }
 
@@ -254,4 +290,45 @@ if ($outputFormat eq 'perl') {
 	print "\n";
 } elsif ($outputFormat eq 'tsv+header') { 
 	eval $output;
+}
+
+# PARSING FUNCTIONS
+sub processTakeChunk {
+	my $startLine = shift(@_);
+	my $splitNum  = shift(@_);
+	my $outputVal = '';
+	my @tempFieldNames;
+	for (my $i = 0; $i < @_; $i++) {
+		if ($_[$i] =~ /^\s*Take [0-9]+ as [A-Za-z][A-Za-z0-9]*$/) {
+			my @array = split /Take | as /, $_[$i];
+			push @tempFieldNames, $array[2];
+			$outputVal .= "\t\t".'push @{ $capturedData{'.$array[2].'} }, $array'.$splitNum.'['.$array[1].'] if defined($array'.$splitNum.'['.$array[1].']);'."\n";
+		} else {
+			# TODO add other possibilities, like Splitting further
+			die 'ERROR: Correctly formatted Take statement expected on line '.($startLine+$i+1).".\n";
+		}
+	}
+	return ($outputVal, @tempFieldNames);
+}
+sub processAtChunk {
+	
+}
+
+# AUXILIARY FUNCTIONS
+sub extractRegex {
+	$_[1] =~ s/^\s*$_[0] \///;
+	$_[1] =~ s/\/$//;
+	return sanitiseRegex($_[1]);
+}
+sub sanitiseRegex {
+	my @chars = split //, $_[0];
+	if ($chars[0] eq '/') {
+		$chars[0] = '\/';
+	}
+	for (my $i = 1; $i < @chars; $i++) {
+		if ($chars[$i] eq '/' && $chars[($i-1)] !~ /^\\$/ ) {
+			$chars[$i] = '\/';
+		}
+	}
+	return (join ('', @chars));
 }
