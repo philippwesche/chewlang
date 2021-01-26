@@ -31,8 +31,10 @@
 
 use strict;
 use sigtrap;
+use Getopt::Long;
 
-#TODO optional warning if output columns are unbalanced
+my $outputProgLang = '';
+GetOptions ("code=s" => \$outputProgLang);
 
 open IN, $ARGV[0];
 chomp(my @lines = <IN>);
@@ -67,23 +69,20 @@ if ($lines[0] =~ /^Reading /) {
 } else {
 	die 'ERROR: No "Reading" instruction found in first line.'."\n";
 }
-
-unless ($lines[@lines-1] =~ /^Format as /) {
+unless ($lines[@lines-1] =~ /^Output /) {
 	die "ERROR: No output format specified in last line.\n";
 }
-unless ($lines[@lines-1] =~ /^Format as (tsv\+header|perl)$/) {
+unless ($lines[@lines-1] =~ /^Output tsv\+header$/) {
 	die "ERROR: Specified output format not known.\n";
 }
-#TODO add "Output" parameter that allows "perl" as an option, or "data" - or possibly "python", "ruby", "java" etc. later - to separate specifying data format from forcing code output
 my $outputFormat;
-$outputFormat = (split /^Format as /, $lines[@lines-1])[1];
+$outputFormat = (split /^Output /, $lines[@lines-1])[1];
 
 my $curVName = $vNames[$vindex];
 $vindex++;
 my $splitNum = 1;
 $preamble .=    'my $processing = 0;'      ."\n"
-	       .'my %capturedData;'        ."\n"
-	       .'my $outputRowCount = 0;'  ."\n";
+	       .'my %capturedData;'        ."\n";
 $bracketOpener .= 'for (my $'.$curVName.' = 0; $'.$curVName.' < @lines; $'.$curVName.'++) {'."\n";
 $closingBrackets = '}'.$closingBrackets;
 
@@ -93,7 +92,6 @@ my $isMatchStillOpen = 0;
 my %stillAllowed = ('Starting',1,'Stopping,1'); # only one of each of these
 my %requireOneOf = ('Starting',1,'Stopping',1,'Matching',1,'Cutting',1);
 my @fieldNames;
-my @RefactorThisArray;
 my $regex;
 
 my $indentPattern = '';
@@ -138,12 +136,12 @@ for (my $i = 0; $i < @lines; $i++) {
 		$indentDepth[$i] = 0;
 	}
 }
-
-my $lookWhere;
-# TODO implement $lookWhere
-
-# TODO test sanitiseRegex
-
+#check indents are increasing only one step at a time
+for (my $i = 1; $i < @lines; $i++) {
+	if  ( $indentDepth[$i]  >  ( $indentDepth[$i-1] + 1 )  )  {
+		die 'ERROR: Excessive indenting on line '.($i+1).'. Unexpected application behaviour may result.'."\n";
+	}
+}
 for (my $i = 1; $i < (@lines-1); $i++) {
 	if      ($lines[$i] =~ /^\s*Starting at \//) {
 		if ($lines[$i] =~ /\/$/) {
@@ -194,7 +192,7 @@ for (my $i = 1; $i < (@lines-1); $i++) {
 			die 'ERROR: Illegal end to "Matching" statement on line '.($i+1).".\n";
 		}
 	} elsif ($lines[$i] =~ /^\s*Capture \//) {
-		#TODO switch to using Take instead of Capture
+		#TODO switch to using Take instead of Capture?
 		if ($lines[$i] =~ /\/ as [A-Za-z][A-Za-z0-9]*$/) {
 			my @array1 = split /Capture \//, $lines[$i];
 			my @array2 = split /\/ as /, $array1[1];
@@ -207,22 +205,23 @@ for (my $i = 1; $i < (@lines-1); $i++) {
 		} else {
 			die 'ERROR: Illegal end to "Capture" statement on line '.($i+1).".\n";
 		}
-	} elsif ($lines[$i] =~ /^\s*Splitting at \//) {   #TODO indent counting to determine if cut has been closed
+	} elsif ($lines[$i] =~ /^\s*Splitting at \//) {
 		if ($lines[$i] =~ /\/$/) {
 			my $regex = extractRegex('Splitting at',$lines[$i]);
 			my $masterIndent = $indentDepth[$i];
 			my $takeChunkPerlCode;
 			for (my $j = $i+1; $j < @lines; $j++) {
 				if ($indentDepth[$j] <= $masterIndent) {
-					($takeChunkPerlCode, my @tempFieldNames) = processTakeChunk(($i+1), $splitNum, @lines[($i+1)..($j-1)]);
+					my @focusLines = @lines[($i+1)..($j-1)];
+					my @focusIndents = @indentDepth[($i+1)..($j-1)];
+					($takeChunkPerlCode, my @tempFieldNames) = processTakeChunk(($i+1), $splitNum, \@focusLines, \@focusIndents);
 					push @fieldNames, @tempFieldNames;
 					$i = $j-1;
 					last;
 				}
 			}
 			$startingStatement .= "\t".'if ($lines[$'.$curVName.'] =~ /'.$regex.'/) {'."\n"
-					     ."\t\t".'my @array'.$splitNum.' = split /'.$regex.'/, $lines[$'.$curVName.'];'."\n"
-					     ."\t\t".'$outputRowCount++;'."\n"; #TODO this causes bugs, better to count actual elements and also only print those that are defined - fix this in the output printing!
+					     ."\t\t".'my @array'.$splitNum.' = split /'.$regex.'/, $lines[$'.$curVName.'];'."\n";
 			$startingStatement .= $takeChunkPerlCode.'}';
 			$splitNum++;
 		} else {
@@ -230,31 +229,21 @@ for (my $i = 1; $i < (@lines-1); $i++) {
 		}
 	} elsif ($lines[$i] =~ /^\s*Locating around \//) {
 		if ($lines[$i] =~ /\/$/) {
-			if ($lines[$i+1] =~ /^\s*(At) /) {
-				my $regex = extractRegex('Locating around', $lines[$i]);
-				$startingStatement .= "\t".'if ($lines[$'.$curVName.'] =~ /'.$regex.'/) {'."\n";
-				$closingBrackets = '}'.$closingBrackets;
-				my $masterIndent = $indentDepth[$i];
-				for (my $j = $i+1; $j < @lines; $j++) {
-					if ($indentDepth[$j] > $masterIndent) {
-						if ($lines[$j] =~ /^\s*Splitting /) {
-							#TODO first confirm that an 'At' is open
-							my $regex2 = extractRegex('Splitting at', $lines[$j]);
-							$startingStatement .= "\t".'if ($lines[$'.$curVName.'+'.$lookWhere.'] =~ /'.$regex2.'/) {'."\n"
-									     ."\t\t".'my @array'.$splitNum.' = split /'.$regex2.'/, $lines[$'.$curVName.'+'.$lookWhere.'];'."\n"
-									     ."\t\t".'$outputRowCount++;'."\n";
-							$closingBrackets = '}'.$closingBrackets;
-							$splitNum++;
-						} elsif ($lines[$i+2] =~ /^\s*Matching /) {
-							#TODO
-						}
-					} else {
-						$i = $j - 1;
-						last;
-					}
+			my $regex = extractRegex('Locating around', $lines[$i]);
+			$startingStatement .= "\t".'if ($lines[$'.$curVName.'] =~ /'.$regex.'/) {'."\n";
+			$closingBrackets = '}'.$closingBrackets;
+			my $masterIndent = $indentDepth[$i];
+			my $atChunkPerlCode;
+			for (my $j = $i+1; $j < @lines; $j++) {
+				if ($indentDepth[$j] <= $masterIndent) {
+					my @focusLines = @lines[($i+1)..($j-1)];
+					my @focusIndents = @indentDepth[($i+1)..($j-1)];
+					($atChunkPerlCode, $splitNum, my @tempFieldNames) = processAtChunk(($i+1), $splitNum, $curVName, \@focusLines, \@focusIndents);
+					$startingStatement .= $atChunkPerlCode;
+					push @fieldNames, @tempFieldNames;
+					$i = $j-1;
+					last;
 				}
-			} else {
-				die 'ERROR: "Locating" on line '.($i+1).' must be followed by "At" statements.'."\n";
 			}
 		} else {
 			die 'ERROR: Illegal end to "Locating" statement on line '.($i+1).".\n";
@@ -265,6 +254,7 @@ for (my $i = 1; $i < (@lines-1); $i++) {
 }
 
 # CONSTRUCTING OUTPUT
+#TODO optional warning if output columns are unbalanced
 if (@fieldNames) {
 	$preamble .= 'my @fieldNames = ("'.$fieldNames[0].'"';
 	for (my $i = 1; $i < @fieldNames; $i++) {
@@ -273,19 +263,25 @@ if (@fieldNames) {
 	$preamble .= ");\n";
 }
 my $outputStatement = 'my @outputLines;'."\n"
-		     .'for (my $i = 0; $i < $outputRowCount; $i++) {'."\n"
-		     ."\t".'$outputLines[$i] = "";'."\n"
+		     .'my $outputRowCount = 0;'."\n"
+		     .'foreach (@fieldNames) {'."\n"
+		     .'	if ( $outputRowCount < @{ $capturedData{$_} } ) {'."\n"
+		     .'		$outputRowCount = @{ $capturedData{$_} };'."\n"
+		     .'	}'."\n"
 		     .'}'."\n"
 		     .'for (my $i = 0; $i < $outputRowCount; $i++) {'."\n"
-		     ."\t".'foreach (@fieldNames) {'."\n"
-		     ."\t\t".'$outputLines[$i] .= shift @{ $capturedData{$_} };'."\n"
-		     ."\t\t".'$outputLines[$i] .= "\t";'."\n"
+		     .'	$outputLines[$i] = "";'."\n"
+		     .'}'."\n"
+		     .'for (my $i = 0; $i < $outputRowCount; $i++) {'."\n"
+		     .'	foreach (@fieldNames) {'."\n"
+		     .'		if ( @{ $capturedData{$_} } ) { $outputLines[$i] .= shift @{ $capturedData{$_} } }'."\n"
+		     .'		$outputLines[$i] .= "\t";'."\n"
 		     .'} }'."\n"
 		     .'foreach (@fieldNames) { print "$_\t" }'."\n"
-		     .'print "\n";'
-		     .'foreach (@outputLines) { print $_."\n"; }';
+		     .'print "\n";'."\n"
+		     .'foreach (@outputLines) { print "$_\n" }';
 my $output = $preamble.$bracketOpener.$stoppingStatement.$startingStatement.$skippingStatement.$closingBrackets.$outputStatement;
-if ($outputFormat eq 'perl') {
+if ($outputProgLang eq 'perl5') {
 	print $output;
 	print "\n";
 } elsif ($outputFormat eq 'tsv+header') { 
@@ -294,13 +290,14 @@ if ($outputFormat eq 'perl') {
 
 # PARSING FUNCTIONS
 sub processTakeChunk {
-	my $startLine = shift(@_);
-	my $splitNum  = shift(@_);
+	my ($startLine,$splitNum,$ref1,$ref2) = @_;
+	my @lines     = @$ref1;
+	my @indentDepth   = @$ref2;
 	my $outputVal = '';
 	my @tempFieldNames;
-	for (my $i = 0; $i < @_; $i++) {
-		if ($_[$i] =~ /^\s*Take [0-9]+ as [A-Za-z][A-Za-z0-9]*$/) {
-			my @array = split /Take | as /, $_[$i];
+	for (my $i = 0; $i < @lines; $i++) {
+		if ($lines[$i] =~ /^\s*Take [0-9]+ as [A-Za-z][A-Za-z0-9]*$/) {
+			my @array = split /Take | as /, $lines[$i];
 			push @tempFieldNames, $array[2];
 			$outputVal .= "\t\t".'push @{ $capturedData{'.$array[2].'} }, $array'.$splitNum.'['.$array[1].'] if defined($array'.$splitNum.'['.$array[1].']);'."\n";
 		} else {
@@ -311,9 +308,61 @@ sub processTakeChunk {
 	return ($outputVal, @tempFieldNames);
 }
 sub processAtChunk {
-	
+	my ($startLine,$splitNum,$curVName,$ref1,$ref2) = @_;
+	my @lines     = @$ref1;	  # making a copy
+	my @indentDepth   = @$ref2;   # making a copy
+	my $outputVal = '';
+	my @localFieldNames;
+	unless ($lines[0] =~ /^\s+At ([+-]?[1-9]\d*|0)$/) {
+		die 'At statement expected on line '.($startLine+1).".\n";
+	}
+	for (my $i = 0; $i < @lines; $i++) {
+		if ($lines[$i] =~ /^\s*(At) /) {
+			my $lookWhere = $lines[$i];
+			$lookWhere =~ s/^\s*At //;
+			my $masterIndent = $indentDepth[$i];
+			for (my $j = $i+1; $j < @lines; $j++) {
+				if ($indentDepth[$j] > $masterIndent) {
+					if ($lines[$j] =~ /^\s*Splitting /) {
+						my $regex2 = extractRegex('Splitting at', $lines[$j]);
+						my $nextMasterIndent = $indentDepth[$j];
+						my $takeChunkPerlCode;
+						for (my $k = $j+1; $k < @lines; $k++) {
+							if ($k == $#lines) {
+								my @focusLines   =       @lines[($j+1)..$k];
+								my @focusIndents = @indentDepth[($j+1)..$k];
+								($takeChunkPerlCode, my @tempFieldNames) = processTakeChunk(($i+1), $splitNum, \@focusLines, \@focusIndents);
+								push @localFieldNames, @tempFieldNames;
+								$j = $k;
+								last;
+							} elsif ($indentDepth[$k] <= $masterIndent) {
+								my @focusLines   =       @lines[($j+1)..($k-1)];
+								my @focusIndents = @indentDepth[($j+1)..($k-1)];
+								($takeChunkPerlCode, my @tempFieldNames) = processTakeChunk(($i+1), $splitNum, \@focusLines, \@focusIndents);
+								push @localFieldNames, @tempFieldNames;
+								$j = $k - 1;
+								last;
+							}
+						}
+						my $before = "\t".'if ($lines[$'.$curVName.'+'.$lookWhere.'] =~ /'.$regex2.'/) {'."\n"
+							    ."\t\t".'my @array'.$splitNum.' = split /'.$regex2.'/, $lines[$'.$curVName.'+'.$lookWhere.'];'."\n";
+						my $after  = '}';
+						$outputVal .= $before.$takeChunkPerlCode.$after;
+						$splitNum++;
+					} elsif ($lines[$i+2] =~ /^\s*Matching /) {
+						#TODO
+					}
+				} else {
+					$i = $j - 1;
+					last;
+				}
+			}
+		#} else {
+			#die 'ERROR: "Locating" on line '.($i+1).' must be followed by "At" statements.'."\n";
+		}
+	}
+	return ($outputVal,$splitNum,@localFieldNames);
 }
-
 # AUXILIARY FUNCTIONS
 sub extractRegex {
 	$_[1] =~ s/^\s*$_[0] \///;
@@ -325,9 +374,21 @@ sub sanitiseRegex {
 	if ($chars[0] eq '/') {
 		$chars[0] = '\/';
 	}
+	my @active;
+	for (my $i = 0; $i < (@chars-1); $i++) {
+		if ($chars[$i] =~ /\\/ && $chars[$i+1] =~ /^\\$/) {
+			$active[$i] = 0;
+			$active[$i+1] = 0;
+			$i++;
+		} else {
+			$active[$i] = 1;
+		}
+	}
 	for (my $i = 1; $i < @chars; $i++) {
-		if ($chars[$i] eq '/' && $chars[($i-1)] !~ /^\\$/ ) {
-			$chars[$i] = '\/';
+		if ($chars[$i] eq '/') {
+			unless ($active[$i-1] == 1 && $chars[($i-1)] =~ /^\\$/ ) {
+				$chars[$i] = '\/';
+			}
 		}
 	}
 	return (join ('', @chars));
