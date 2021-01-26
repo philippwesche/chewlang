@@ -28,6 +28,6 @@ Take *number* as *outputname*
 [//]: # (&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;)
 
 # Dependencies
-* Perl 5
+* Perl 5 (earlier versions untested)
 * Getopt::Long
 * LWP >=5.64
