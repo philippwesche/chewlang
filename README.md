@@ -6,7 +6,7 @@ Design priorities:
 * Short, readable code
 * Ease of learning (esp. being incrementally useful)
 * Modelled after natural English usage
-* Experimental introduction of "contexts" to replace/unify control and parameters
+* Experimental introduction of "contexts" to replace/unify control flow and parameters
 
 # A few essential commands ("verbs")
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;*NB This is an introductory list. More than shown here is currently supported and will be added with documentation and examples in due course. However, this selection should serve to illustrate how chew can do a lot with a few short commands.*
