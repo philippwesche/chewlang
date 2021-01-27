@@ -24,7 +24,7 @@ Design priorities:
   * Only lines matching *expression* should be processed.
 
 * Splitting at /*expression*/
-  * This divides a line into chunks using *expression* as a divider. Cut must be followed by one or several *Take* statements.
+  * This divides a line into chunks using *expression* as a divider. Splitting must be followed by one or several *Take* statements.
 
 * Take *number* as *outputname*
   * This preserves the chunk indicated by *number* (starting at 0 for the first chunk, such as the beginning of a line). In output, the chunk will then appear in a column whose heading is *outputname*.
