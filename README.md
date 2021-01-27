@@ -29,9 +29,12 @@ Design priorities:
 * Take *number* as *outputname*
   * This preserves the chunk indicated by *number* (starting at 0 for the first chunk, such as the beginning of a line). In output, the chunk will then appear in a column whose heading is *outputname*.
 
+* Output *format*
+  * Obligatory statement to specify output format. This needs to be the last line of your chew file. The first supported format is "tsv+header".
+
 [//]: # (&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;)
 
 # Dependencies
 * Perl 5 (earlier versions untested)
 * Getopt::Long
-* LWP >=5.64
+* LWP >=5.64 (if reading from http(s))
