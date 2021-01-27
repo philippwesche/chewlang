@@ -6,7 +6,7 @@ Design priorities:
 * Short, readable code
 * Ease of learning (esp. being incrementally useful)
 * Modelled after natural English usage
-* Experimental introduction of "contexts" to replace/unify control flow and parameters
+* Experimental introduction of "contexts" to replace/unify flow control and parameters
 
 # A few essential commands ("verbs")
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;*NB This is an introductory list. More than shown here is currently supported and will be added with documentation and examples in due course. However, this selection should serve to illustrate how chew can do a lot with a few short commands.*
@@ -15,8 +15,10 @@ Design priorities:
   * This tells chew which file to open. You may specify an http or https URL instead (experimental, dependencies may change).
 
 * Starting at /*expression*/
+  * Can be used to indicate that nothing on or after a line matching the *Stopping at* expression should be processed. The *expression* should be a regular expression.
+
 * Stopping at /*expression*/
-  * Can be used to indicate that nothing prior to a line matching the *Starting at* expression and nothing after a line matching the *Stopping at* expression should be processed. The *expression* should be a regular expression.
+  * Can be used to indicate that nothing prior to a line matching the *Starting at* expression should be processed. The *expression* should be a regular expression.
 
 * Matching /*expression*/
   * Only lines matching *expression* should be processed.
