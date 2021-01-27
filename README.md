@@ -23,7 +23,7 @@ Design priorities:
 * Matching /*expression*/
   * Only lines matching *expression* should be processed.
 
-* Cut at /*expression*/
+* Splitting at /*expression*/
   * This divides a line into chunks using *expression* as a divider. Cut must be followed by one or several *Take* statements.
 
 * Take *number* as *outputname*
