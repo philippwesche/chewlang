@@ -8,17 +8,25 @@ Design priorities:
 * Modelled after natural English usage
 * Experimental introduction of "contexts" to replace/unify flow control and parameters
 
-# A few essential commands ("verbs")
+# Online demo
+A quick live demo can be found at http://chewlang.com
+
+# Syntax
+## Obligatory statements
+* Reading *filename*
+  * This tells chew which file to open. You may specify an http or https URL instead (experimental, dependencies may change). The Reading statement must be the first line of a chew file.
+
+* Output *format*
+  * Obligatory statement to specify output format. The first supported format is "tsv+header". The Output statement must be the last line of a chew file.
+
+## A few essential commands ("verbs")
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;*NB This is an introductory list. More than shown here is currently supported and will be added with documentation and examples in due course. However, this selection should serve to illustrate how chew can do a lot with a few short commands.*
 
-* Reading *filename*
-  * This tells chew which file to open. You may specify an http or https URL instead (experimental, dependencies may change).
-
 * Starting at /*expression*/
-  * Can be used to indicate that nothing on or after a line matching the *Stopping at* expression should be processed. The *expression* should be a regular expression.
+  * Can be used to indicate that nothing on or after a line matching the *Starting at* expression should be processed. The *expression* should be a regular expression. The Starting statement is not obligatory.
 
 * Stopping at /*expression*/
-  * Can be used to indicate that nothing prior to a line matching the *Starting at* expression should be processed. The *expression* should be a regular expression.
+  * Can be used to indicate that nothing prior to a line matching the *Stopping at* expression should be processed. The *expression* should be a regular expression. The Stopping statement is not obligatory.
 
 * Matching /*expression*/
   * Only lines matching *expression* should be processed.
@@ -28,9 +36,6 @@ Design priorities:
 
 * Take *number* as *outputname*
   * This preserves the chunk indicated by *number* (starting at 0 for the first chunk, such as the beginning of a line). In output, the chunk will then appear in a column whose heading is *outputname*.
-
-* Output *format*
-  * Obligatory statement to specify output format. This needs to be the last line of your chew file. The first supported format is "tsv+header".
 
 [//]: # (&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;)
 
