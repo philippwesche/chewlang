@@ -13,7 +13,7 @@
 # - Experimental introduction of "contexts" to replace/unify flow control and parameters
 #
 #
-# Copyright (C) 2020 Philipp L. Wesche
+# Copyright (C) 2020, 2021 Philipp L. Wesche
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License v3 (version 3),
@@ -89,8 +89,8 @@ $closingBrackets = '}'.$closingBrackets;
 my $indentLevel = 0;
 my $hasStartStatement = 0;
 my $isMatchStillOpen = 0;
-my %stillAllowed = ('Starting',1,'Stopping,1'); # only one of each of these
-my %requireOneOf = ('Starting',1,'Stopping',1,'Matching',1,'Cutting',1);
+my %stillAllowed = ('Starting',1,'Stopping',1); # only one of each of these #TODO
+my %requireOneOf = ('Starting',1,'Stopping',1,'Matching',1,'Cutting',1); #TODO
 my @fieldNames;
 my $regex;
 
