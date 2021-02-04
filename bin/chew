@@ -94,6 +94,7 @@ my %requireOneOf = ('Starting',1,'Stopping',1,'Matching',1,'Cutting',1); #TODO
 my @fieldNames;
 my $regex;
 
+# detect the indenting pattern used in the chew file
 my $indentPattern = '';
 my $firstIndentLine;
 for (my $i = 1; $i < (@lines-1); $i++) {
