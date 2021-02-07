@@ -28,9 +28,6 @@ A quick live demo can be found at http://chewlang.com
 * Stopping at /*expression*/
   * Can be used to indicate that nothing prior to a line matching the *Stopping at* expression should be processed. The *expression* should be a regular expression. The Stopping statement is not obligatory.
 
-* Matching /*expression*/
-  * Only lines matching *expression* should be processed.
-
 * Splitting at /*expression*/
   * This divides a line into chunks using *expression* as a divider. Splitting must be followed by one or several *Take* statements.
 
