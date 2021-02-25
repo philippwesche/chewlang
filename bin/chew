@@ -172,7 +172,11 @@ for (my $i = 1; $i < (@lines-1); $i++) {
 			$regex =~ s/\/$//;
 			$regex = sanitiseRegex($regex);
 			my @array = split /Skipping | whenever /, $lines[$i];
-			$startingStatement .= "\t".'if ($lines[$'.$curVName.'] =~ /'.$regex.'/) {'."\n"
+			$startingStatement .= "\t".'if (';
+			if ($hasStartStatement) {
+				$startingStatement .= '$processing == 1 && '
+			}
+			$startingStatement .= '$lines[$'.$curVName.'] =~ /'.$regex.'/) {'."\n"
 					    ."\t\t".'$'.$curVName.' += '.$array[1].";\n"
 					    ."\t}\n";
 		} else {
@@ -184,7 +188,7 @@ for (my $i = 1; $i < (@lines-1); $i++) {
 			my $regex = extractRegex('Matching',$lines[$i]);
 			$startingStatement .= "\t".'if (';
 			if ($hasStartStatement) {
-				$startingStatement .= '$processing && '
+				$startingStatement .= '$processing == 1 && '
 			}
 			$startingStatement .= '$lines[$'.$curVName.'] =~ /'.$regex.'/) {'."\n";
 			$closingBrackets = '}'.$closingBrackets;
@@ -276,7 +280,7 @@ my $outputStatement = 'my @outputLines;'."\n"
 		     .'for (my $i = 0; $i < $outputRowCount; $i++) {'."\n"
 		     .'	foreach (@fieldNames) {'."\n"
 		     .'		if ( @{ $capturedData{$_} } ) { $outputLines[$i] .= shift @{ $capturedData{$_} } }'."\n"
-		     .'		$outputLines[$i] .= "\t";'."\n"
+		     .'		$outputLines[$i] .= "\t";'."\n"    #prevent column slippage by inserting tab even if no data captured for this col
 		     .'} }'."\n"
 		     .'foreach (@fieldNames) { print "$_\t" }'."\n"
 		     .'print "\n";'."\n"
