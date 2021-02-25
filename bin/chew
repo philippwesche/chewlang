@@ -43,28 +43,29 @@ my $bracketOpener = '';
 my $startingStatement = '';
 my $stoppingStatement = '';
 my $skippingStatement = '';
-my $closingBrackets = "\n";
+my $closingBrackets = "}\n";
 my $outputStatement = '';
 my @vNames = ('a','b','c','d','e','f','g','h','i','j','k','l','m','n','o','p','r','s','t','u','v','w','x','y','z','aa','ab','ac','ad','ae','af','ag','ah','ai','aj','ak','al','am','an','ao','ap'); #interim solution
 my $vindex = 0;   # put some... have you seen the movie?
 if ($lines[0] =~ /^Reading /) {
-	#TODO we probably want to silently chop trailing white space, or warn about it
+	warn "'Reading' line contains trailing whitespace\n" if $url =~ /\s$/;
+	my $url = $lines[0];
+	$url =~ s/^Reading //;
+	my $fileStr = expandToPerlFilelistString($url);
 	if ($lines[0] =~ /^Reading https?\:\/\//) {
-		my $url = $lines[0];
-		$url =~ s/^Reading //;
 		$preamble .= 'use LWP 5.64;'."\n"
 			    .'my $browser = LWP::UserAgent->new;'."\n"
 			    .'$browser->agent("Mozilla/5.0");'."\n"
-			    .'my $url = '."'".$url."'".';'."\n"
+	       		    .'my %capturedData;'."\n"
+			    .'foreach my $url ('.$fileStr.') {'."\n"
 			    .'my $res = $browser->get($url);'."\n"
 			    .'die "ERROR at $url\n", $res->status_line, "\n Aborting\n" unless $res->is_success;'."\n"
 			    .'my @lines = split /\n/, $res->decoded_content;'."\n"
 		            .'die "Could not get $url" unless @lines;'."\n";
 	} else {
-		my $readfile;
-		$readfile = $lines[0];
-		$readfile =~ s/^Reading //;
-		$preamble .=  'open IN, "'.$readfile.'";'."\n".'chomp(my @lines = <IN>);'."\n";
+		$preamble .=  'my %capturedData;'."\n"
+			     .'foreach my $file ('.$fileStr.') {'."\n"
+			     .'open IN, $file;'."\n".'chomp(my @lines = <IN>);'."\n";
 	}
 } else {
 	die 'ERROR: No "Reading" instruction found in first line.'."\n";
@@ -81,8 +82,7 @@ $outputFormat = (split /^Output /, $lines[@lines-1])[1];
 my $curVName = $vNames[$vindex];
 $vindex++;
 my $splitNum = 1;
-$preamble .=    'my $processing = 0;'      ."\n"
-	       .'my %capturedData;'        ."\n";
+$preamble .=    'my $processing = 0;'      ."\n";
 $bracketOpener .= 'for (my $'.$curVName.' = 0; $'.$curVName.' < @lines; $'.$curVName.'++) {'."\n";
 $closingBrackets = '}'.$closingBrackets;
 
@@ -112,7 +112,7 @@ for (my $i = 1; $i < (@lines-1); $i++) {
 	}
 }
 
-# for now and for simplicity, enforce that only one whitespace character be used
+# for now and for simplicity, enforce that only one type of whitespace character be used
 my $indentLength = length($indentPattern);
 my @indentSplit = split //, $indentPattern;
 if ($indentLength > 1) {
@@ -128,10 +128,14 @@ my @indentDepth;
 for (my $i = 0; $i < @lines; $i++) {
 	if ($lines[$i] =~ /^$indentChar+/) {
 		my $rawIndentLen = length( substr ( $lines[$i], $-[0], $+[0]-$-[0] ) );
-		if ($rawIndentLen % $indentLength) {
-			die 'ERROR: Indent length on line '.($i+1).' is not a multiple of the indent length defined in the first indented line, line '.($firstIndentLine+1).".\n";
+		if ($indentLength > 0) {
+			if ($rawIndentLen % $indentLength) {
+				die 'ERROR: Indent length on line '.($i+1).' is not a multiple of the indent length defined in the first indented line, line '.($firstIndentLine+1).".\n";
+			} else {
+				$indentDepth[$i] = $rawIndentLen / $indentLength;	
+			}
 		} else {
-			$indentDepth[$i] = $rawIndentLen / $indentLength;	
+			#TODO catch absence-of-indents error here, for example - or further up if fatal
 		}
 	} else {
 		$indentDepth[$i] = 0;
@@ -260,14 +264,16 @@ for (my $i = 1; $i < (@lines-1); $i++) {
 
 # CONSTRUCTING OUTPUT
 #TODO optional warning if output columns are unbalanced
+my $fieldnameLine = '';
 if (@fieldNames) {
-	$preamble .= 'my @fieldNames = ("'.$fieldNames[0].'"';
+	$fieldnameLine .= 'my @fieldNames = ("'.$fieldNames[0].'"';
 	for (my $i = 1; $i < @fieldNames; $i++) {
-		$preamble .= ',"'.$fieldNames[$i].'"';
+		$fieldnameLine .= ',"'.$fieldNames[$i].'"';
 	}
-	$preamble .= ");\n";
+	$fieldnameLine .= ");\n";
 }
-my $outputStatement = 'my @outputLines;'."\n"
+my $outputStatement = $fieldnameLine
+		     .'my @outputLines;'."\n"
 		     .'my $outputRowCount = 0;'."\n"
 		     .'foreach (@fieldNames) {'."\n"
 		     .'	if ( $outputRowCount < @{ $capturedData{$_} } ) {'."\n"
@@ -312,6 +318,7 @@ sub processTakeChunk {
 	}
 	return ($outputVal, @tempFieldNames);
 }
+
 sub processAtChunk {
 	my ($startLine,$splitNum,$curVName,$ref1,$ref2) = @_;
 	my @lines     = @$ref1;	  # making a copy
@@ -397,4 +404,51 @@ sub sanitiseRegex {
 		}
 	}
 	return (join ('', @chars));
+}
+
+sub expandToPerlFilelistStringRecur {
+	my @tempArray;
+	my @subparts = split /\.\./, $_[0];
+	my $targetLength = length($subparts[0]);
+	$subparts[0] =~ s/^0+//;
+	$subparts[1] =~ s/^0+//;
+	if ($subparts[0] > $subparts[1]) {
+		die "Read file ranges must be in ascending order.\n";
+	}
+	for (my $a = $subparts[0]; $a < $subparts[1]+1; $a++) {
+		while ( length($a) < $targetLength ) {
+			$a = "0".$a;
+		}
+		push @tempArray, $a.$_[1];
+	}
+
+	if (@_ > 2) {
+		my @returnedList = expandToPerlFilelistStringRecur(@_[2..(@_-1)]);
+		my @resultArray;
+		foreach my $left (@tempArray) {
+			foreach my $right (@returnedList) {
+				push @resultArray, $left.$right;
+			}
+		}
+		return @resultArray;
+	} else {
+		return @tempArray;
+	}
+}
+
+sub expandToPerlFilelistString {
+	my @variablePartsArray;
+	if ($_[0] =~ /\{\{[0-9]+\.\.[0-9]+\}\}/) {
+		my @parts = split /\{\{|\}\}/, $_[0];
+		my @results = expandToPerlFilelistStringRecur(@parts[1..(@parts-1)]);
+		my $retString = '';
+		foreach my $result (@results) {
+			$retString .= '"'.$parts[0].$result.'", ';
+		}
+		chop $retString; chop $retString;
+		return $retString;
+	} else {
+		#TODO possible to add malformatting warnings here if the match in the first condition is not met perfectly
+		return "'".$_[0]."'";
+	}
 }
