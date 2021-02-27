@@ -48,7 +48,7 @@ my $outputStatement = '';
 my @vNames = ('a','b','c','d','e','f','g','h','i','j','k','l','m','n','o','p','r','s','t','u','v','w','x','y','z','aa','ab','ac','ad','ae','af','ag','ah','ai','aj','ak','al','am','an','ao','ap'); #interim solution
 my $vindex = 0;   # put some... have you seen the movie?
 if ($lines[0] =~ /^Reading /) {
-	warn "'Reading' line contains trailing whitespace\n" if $url =~ /\s$/;
+	warn "'Reading' line contains trailing whitespace\n" if $lines[0] =~ /\s$/;
 	my $url = $lines[0];
 	$url =~ s/^Reading //;
 	my $fileStr = expandToPerlFilelistString($url);
@@ -215,27 +215,8 @@ for (my $i = 1; $i < (@lines-1); $i++) {
 			die 'ERROR: Illegal end to "Capture" statement on line '.($i+1).".\n";
 		}
 	} elsif ($lines[$i] =~ /^\s*Splitting at \//) {
-		if ($lines[$i] =~ /\/$/) {
-			my $regex = extractRegex('Splitting at',$lines[$i]);
-			my $masterIndent = $indentDepth[$i];
-			my $takeChunkPerlCode;
-			for (my $j = $i+1; $j < @lines; $j++) {
-				if ($indentDepth[$j] <= $masterIndent) {
-					my @focusLines = @lines[($i+1)..($j-1)];
-					my @focusIndents = @indentDepth[($i+1)..($j-1)];
-					($takeChunkPerlCode, my @tempFieldNames) = processTakeChunk(($i+1), $splitNum, \@focusLines, \@focusIndents);
-					push @fieldNames, @tempFieldNames;
-					$i = $j-1;
-					last;
-				}
-			}
-			$startingStatement .= "\t".'if ($lines[$'.$curVName.'] =~ /'.$regex.'/) {'."\n"
-					     ."\t\t".'my @array'.$splitNum.' = split /'.$regex.'/, $lines[$'.$curVName.'];'."\n";
-			$startingStatement .= $takeChunkPerlCode.'}';
-			$splitNum++;
-		} else {
-			die 'ERROR: Illegal end to "Splitting" statement on line '.($i+1).".\n";
-		}
+		($splitNum,my $startingAdd) = processSplit($i,$splitNum,\@lines,\@indentDepth,'lines');
+		$startingStatement .= $startingAdd;
 	} elsif ($lines[$i] =~ /^\s*Locating around \//) {
 		if ($lines[$i] =~ /\/$/) {
 			my $regex = extractRegex('Locating around', $lines[$i]);
@@ -300,6 +281,33 @@ if ($outputProgLang eq 'perl5') {
 }
 
 # PARSING FUNCTIONS
+sub processSplit {
+	my ($i, $splitNum, $linep, $indentp, $cycleThrough) = @_;
+	my $startingAdd = '';
+	if ($$linep[$i] =~ /\/$/) {
+		my $regex = extractRegex('Splitting at',$$linep[$i]);
+		my $masterIndent = $$indentp[$i];
+		my $takeChunkPerlCode;
+		for (my $j = $i+1; $j < @$linep; $j++) {
+			if ($$indentp[$j] <= $masterIndent) {
+				my @focusLines = @$linep[($i+1)..($j-1)];
+				my @focusIndents = @$indentp[($i+1)..($j-1)];
+				($takeChunkPerlCode, my @tempFieldNames) = processTakeChunk(($i+1), $splitNum, \@focusLines, \@focusIndents);
+				push @fieldNames, @tempFieldNames;
+				$i = $j-1;
+				last;
+			}
+		}
+		$startingAdd .= "\t".'if ($'.$cycleThrough.'[$'.$curVName.'] =~ /'.$regex.'/) {'."\n"
+			       ."\t\t".'my @array'.$splitNum.' = split /'.$regex.'/, $'.$cycleThrough.'[$'.$curVName.'];'."\n"
+			       . $takeChunkPerlCode.'}';
+		$splitNum++;
+		return($splitNum,$startingAdd);
+	} else {
+		die 'ERROR: Illegal end to "Splitting" statement on line '.($i+1).".\n";
+	}
+}
+
 sub processTakeChunk {
 	my ($startLine,$splitNum,$ref1,$ref2) = @_;
 	my @lines     = @$ref1;
@@ -312,7 +320,6 @@ sub processTakeChunk {
 			push @tempFieldNames, $array[2];
 			$outputVal .= "\t\t".'push @{ $capturedData{'.$array[2].'} }, $array'.$splitNum.'['.$array[1].'] if defined($array'.$splitNum.'['.$array[1].']);'."\n";
 		} else {
-			# TODO add other possibilities, like Splitting further
 			die 'ERROR: Correctly formatted Take statement expected on line '.($startLine+$i+1).".\n";
 		}
 	}
