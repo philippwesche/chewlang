@@ -338,25 +338,19 @@ sub processAtChunk {
 				if ($indentDepth[$j] > $masterIndent) {
 					if ($$linep[$j] =~ /^\s*Splitting /) {
 						my $regex2 = extractRegex('Splitting at', $$linep[$j]);
-						my $nextMasterIndent = $indentDepth[$j];
 						my $takeChunkPerlCode;
+						my $upTo = @$linep-1;
 						for (my $k = $j+1; $k < @$linep; $k++) {
-							if ($k == (@$linep-1)) {
-								my @focusLines   =      @$linep[($j+1)..$k];
-								my @focusIndents = @indentDepth[($j+1)..$k];
-								($takeChunkPerlCode, my @tempFieldNames) = processTakeChunk(($i+1), $splitNum, \@focusLines, \@focusIndents);
-								push @localFieldNames, @tempFieldNames;
-								$j = $k;
-								last;
-							} elsif ($indentDepth[$k] <= $masterIndent) {
-								my @focusLines   =      @$linep[($j+1)..($k-1)];
-								my @focusIndents = @indentDepth[($j+1)..($k-1)];
-								($takeChunkPerlCode, my @tempFieldNames) = processTakeChunk(($i+1), $splitNum, \@focusLines, \@focusIndents);
-								push @localFieldNames, @tempFieldNames;
-								$j = $k - 1;
+							if ($indentDepth[$k] <= $masterIndent) {
+								$upTo = $k-1;
 								last;
 							}
 						}
+						my @focusLines   =      @$linep[($j+1)..$upTo];
+						my @focusIndents = @indentDepth[($j+1)..$upTo];
+						($takeChunkPerlCode, my @tempFieldNames) = processTakeChunk(($i+1), $splitNum, \@focusLines, \@focusIndents);
+						push @localFieldNames, @tempFieldNames;
+						$j = $upTo;
 						my $before = "\t".'if ($lines[$'.$curVName.'+'.$lookWhere.'] =~ /'.$regex2.'/) {'."\n"
 							    ."\t\t".'my @array'.$splitNum.' = split /'.$regex2.'/, $lines[$'.$curVName.'+'.$lookWhere.'];'."\n";
 						my $after  = '}';
