@@ -31,6 +31,7 @@
 
 use strict;
 use sigtrap;
+use warnings;
 use Getopt::Long;
 
 my $outputProgLang = '';
@@ -44,7 +45,6 @@ my $startingStatement = '';
 my $stoppingStatement = '';
 my $skippingStatement = '';
 my $closingBrackets = "}\n";
-my $outputStatement = '';
 my @vNames = ('a','b','c','d','e','f','g','h','i','j','k','l','m','n','o','p','r','s','t','u','v','w','x','y','z','aa','ab','ac','ad','ae','af','ag','ah','ai','aj','ak','al','am','an','ao','ap'); #interim solution
 my $vindex = 0;   # put some... have you seen the movie?
 if ($lines[0] =~ /^Reading /) {
