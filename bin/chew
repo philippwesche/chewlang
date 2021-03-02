@@ -242,7 +242,6 @@ for (my $i = 1; $i < (@lines-1); $i++) {
 		die 'ERROR: Line '.($i+1).' did not match any expected expression (Starting, Stopping, Matching, Splitting, Capture).'."\n";
 	}
 }
-
 # CONSTRUCTING OUTPUT
 #TODO optional warning if output columns are unbalanced
 my $fieldnameLine = '';
@@ -287,16 +286,9 @@ sub processSplit {
 		my $regex = extractRegex('Splitting at',$$linep[$i]);
 		my $masterIndent = $$indentp[$i];
 		my $takeChunkPerlCode;
-		for (my $j = $i+1; $j < @$linep; $j++) {
-			if ($$indentp[$j] <= $masterIndent) {
-				my @focusLines = @$linep[($i+1)..($j-1)];
-				my @focusIndents = @$indentp[($i+1)..($j-1)];
-				($takeChunkPerlCode, my @tempFieldNames) = processTakeChunk(($i+1), $splitNum, \@focusLines, \@focusIndents);
-				push @fieldNames, @tempFieldNames;
-				$i = $j-1;
-				last;
-			}
-		}
+		($takeChunkPerlCode, my $skipLines, my @tempFieldNames) = processTakeChunk(($i+1), $splitNum, $linep, $indentp);
+		#TODO pass skipLines up the chain
+		push @fieldNames, @tempFieldNames;
 		$startingAdd .= "\t".'if ($'.$cycleThrough.'[$'.$curVName.'] =~ /'.$regex.'/) {'."\n"
 			       ."\t\t".'my @array'.$splitNum.' = split /'.$regex.'/, $'.$cycleThrough.'[$'.$curVName.'];'."\n"
 			       . $takeChunkPerlCode.'}';
@@ -310,7 +302,10 @@ sub processTakeChunk {
 	my ($startLine,$splitNum,$linep,$indentp) = @_;
 	my $outputVal = '';
 	my @tempFieldNames;
-	for (my $i = 0; $i < @$linep; $i++) {
+	my $chunkLength = 0;
+	for (my $i = $startLine; $i < @$linep; $i++) {
+		last if ($$indentp[$i] < $$indentp[$startLine]);
+		$chunkLength++;
 		if ($$linep[$i] =~ /^\s*Take [0-9]+ as [A-Za-z][A-Za-z0-9]*$/) {
 			my @array = split /Take | as /, $$linep[$i];
 			push @tempFieldNames, $array[2];
@@ -319,7 +314,7 @@ sub processTakeChunk {
 			die 'ERROR: Correctly formatted Take statement expected on line '.($startLine+$i+1).".\n";
 		}
 	}
-	return ($outputVal, @tempFieldNames);
+	return ($outputVal, $chunkLength, @tempFieldNames);
 }
 sub processAtChunk {
 	my ($startLine,$splitNum,$curVName,$linep,$indentp) = @_;
@@ -339,18 +334,9 @@ sub processAtChunk {
 					if ($$linep[$j] =~ /^\s*Splitting /) {
 						my $regex2 = extractRegex('Splitting at', $$linep[$j]);
 						my $takeChunkPerlCode;
-						my $upTo = @$linep-1;
-						for (my $k = $j+1; $k < @$linep; $k++) {
-							if ($indentDepth[$k] <= $masterIndent) {
-								$upTo = $k-1;
-								last;
-							}
-						}
-						my @focusLines   =      @$linep[($j+1)..$upTo];
-						my @focusIndents = @indentDepth[($j+1)..$upTo];
-						($takeChunkPerlCode, my @tempFieldNames) = processTakeChunk(($i+1), $splitNum, \@focusLines, \@focusIndents);
+						($takeChunkPerlCode, my $skipLines, my @tempFieldNames) = processTakeChunk(($j+1), $splitNum, $linep, $indentp);
 						push @localFieldNames, @tempFieldNames;
-						$j = $upTo;
+						$j += $skipLines;
 						my $before = "\t".'if ($lines[$'.$curVName.'+'.$lookWhere.'] =~ /'.$regex2.'/) {'."\n"
 							    ."\t\t".'my @array'.$splitNum.' = split /'.$regex2.'/, $lines[$'.$curVName.'+'.$lookWhere.'];'."\n";
 						my $after  = '}';
