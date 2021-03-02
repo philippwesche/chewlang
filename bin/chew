@@ -215,7 +215,7 @@ for (my $i = 1; $i < (@lines-1); $i++) {
 			die 'ERROR: Illegal end to "Capture" statement on line '.($i+1).".\n";
 		}
 	} elsif ($lines[$i] =~ /^\s*Splitting at \//) {
-		($splitNum,my $startingAdd) = processSplit($i,$splitNum,\@lines,\@indentDepth,'lines');
+		($splitNum, my $skipLines, my $startingAdd) = processSplit($i,$splitNum,\@lines,\@indentDepth,'lines');
 		$startingStatement .= $startingAdd;
 	} elsif ($lines[$i] =~ /^\s*Locating around \//) {
 		if ($lines[$i] =~ /\/$/) {
@@ -284,16 +284,13 @@ sub processSplit {
 	my $startingAdd = '';
 	if ($$linep[$i] =~ /\/$/) {
 		my $regex = extractRegex('Splitting at',$$linep[$i]);
-		my $masterIndent = $$indentp[$i];
-		my $takeChunkPerlCode;
-		($takeChunkPerlCode, my $skipLines, my @tempFieldNames) = processTakeChunk(($i+1), $splitNum, $linep, $indentp);
-		#TODO pass skipLines up the chain
+		my ($takeChunkPerlCode, $skipLines, @tempFieldNames) = processTakeChunk(($i+1), $splitNum, $linep, $indentp);
 		push @fieldNames, @tempFieldNames;
 		$startingAdd .= "\t".'if ($'.$cycleThrough.'[$'.$curVName.'] =~ /'.$regex.'/) {'."\n"
 			       ."\t\t".'my @array'.$splitNum.' = split /'.$regex.'/, $'.$cycleThrough.'[$'.$curVName.'];'."\n"
 			       . $takeChunkPerlCode.'}';
 		$splitNum++;
-		return($splitNum,$startingAdd);
+		return($splitNum,$skipLines,$startingAdd);
 	} else {
 		die 'ERROR: Illegal end to "Splitting" statement on line '.($i+1).".\n";
 	}
