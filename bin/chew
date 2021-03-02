@@ -279,7 +279,6 @@ if ($outputProgLang eq 'perl5') {
 } elsif ($outputFormat eq 'tsv+header') { 
 	eval $output;
 }
-
 # PARSING FUNCTIONS
 sub processSplit {
 	my ($i, $splitNum, $linep, $indentp, $cycleThrough) = @_;
@@ -307,16 +306,13 @@ sub processSplit {
 		die 'ERROR: Illegal end to "Splitting" statement on line '.($i+1).".\n";
 	}
 }
-
 sub processTakeChunk {
-	my ($startLine,$splitNum,$ref1,$ref2) = @_;
-	my @lines     = @$ref1;
-	my @indentDepth   = @$ref2;
+	my ($startLine,$splitNum,$linep,$indentp) = @_;
 	my $outputVal = '';
 	my @tempFieldNames;
-	for (my $i = 0; $i < @lines; $i++) {
-		if ($lines[$i] =~ /^\s*Take [0-9]+ as [A-Za-z][A-Za-z0-9]*$/) {
-			my @array = split /Take | as /, $lines[$i];
+	for (my $i = 0; $i < @$linep; $i++) {
+		if ($$linep[$i] =~ /^\s*Take [0-9]+ as [A-Za-z][A-Za-z0-9]*$/) {
+			my @array = split /Take | as /, $$linep[$i];
 			push @tempFieldNames, $array[2];
 			$outputVal .= "\t\t".'push @{ $capturedData{'.$array[2].'} }, $array'.$splitNum.'['.$array[1].'] if defined($array'.$splitNum.'['.$array[1].']);'."\n";
 		} else {
@@ -325,37 +321,35 @@ sub processTakeChunk {
 	}
 	return ($outputVal, @tempFieldNames);
 }
-
 sub processAtChunk {
-	my ($startLine,$splitNum,$curVName,$ref1,$ref2) = @_;
-	my @lines     = @$ref1;	  # making a copy
-	my @indentDepth   = @$ref2;   # making a copy
+	my ($startLine,$splitNum,$curVName,$linep,$indentp) = @_;
+	my @indentDepth   = @$indentp;    # making a copy
 	my $outputVal = '';
 	my @localFieldNames;
-	unless ($lines[0] =~ /^\s+At ([+-]?[1-9]\d*|0)$/) {
+	unless ($$linep[0] =~ /^\s+At ([+-]?[1-9]\d*|0)$/) {
 		die 'At statement expected on line '.($startLine+1).".\n";
 	}
-	for (my $i = 0; $i < @lines; $i++) {
-		if ($lines[$i] =~ /^\s*(At) /) {
-			my $lookWhere = $lines[$i];
+	for (my $i = 0; $i < @$linep; $i++) {
+		if ($$linep[$i] =~ /^\s*(At) /) {
+			my $lookWhere = $$linep[$i];
 			$lookWhere =~ s/^\s*At //;
 			my $masterIndent = $indentDepth[$i];
-			for (my $j = $i+1; $j < @lines; $j++) {
+			for (my $j = $i+1; $j < @$linep; $j++) {
 				if ($indentDepth[$j] > $masterIndent) {
-					if ($lines[$j] =~ /^\s*Splitting /) {
-						my $regex2 = extractRegex('Splitting at', $lines[$j]);
+					if ($$linep[$j] =~ /^\s*Splitting /) {
+						my $regex2 = extractRegex('Splitting at', $$linep[$j]);
 						my $nextMasterIndent = $indentDepth[$j];
 						my $takeChunkPerlCode;
-						for (my $k = $j+1; $k < @lines; $k++) {
-							if ($k == $#lines) {
-								my @focusLines   =       @lines[($j+1)..$k];
+						for (my $k = $j+1; $k < @$linep; $k++) {
+							if ($k == (@$linep-1)) {
+								my @focusLines   =      @$linep[($j+1)..$k];
 								my @focusIndents = @indentDepth[($j+1)..$k];
 								($takeChunkPerlCode, my @tempFieldNames) = processTakeChunk(($i+1), $splitNum, \@focusLines, \@focusIndents);
 								push @localFieldNames, @tempFieldNames;
 								$j = $k;
 								last;
 							} elsif ($indentDepth[$k] <= $masterIndent) {
-								my @focusLines   =       @lines[($j+1)..($k-1)];
+								my @focusLines   =      @$linep[($j+1)..($k-1)];
 								my @focusIndents = @indentDepth[($j+1)..($k-1)];
 								($takeChunkPerlCode, my @tempFieldNames) = processTakeChunk(($i+1), $splitNum, \@focusLines, \@focusIndents);
 								push @localFieldNames, @tempFieldNames;
@@ -368,7 +362,7 @@ sub processAtChunk {
 						my $after  = '}';
 						$outputVal .= $before.$takeChunkPerlCode.$after;
 						$splitNum++;
-					} elsif ($lines[$i+2] =~ /^\s*Matching /) {
+					} elsif ($$linep[$i+2] =~ /^\s*Matching /) {
 						#TODO
 					}
 				} else {
