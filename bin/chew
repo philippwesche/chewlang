@@ -315,7 +315,6 @@ sub processTakeChunk {
 }
 sub processAtChunk {
 	my ($startLine,$splitNum,$curVName,$linep,$indentp) = @_;
-	my @indentDepth   = @$indentp;    # making a copy
 	my $outputVal = '';
 	my @localFieldNames;
 	unless ($$linep[0] =~ /^\s+At ([+-]?[1-9]\d*|0)$/) {
@@ -325,9 +324,8 @@ sub processAtChunk {
 		if ($$linep[$i] =~ /^\s*(At) /) {
 			my $lookWhere = $$linep[$i];
 			$lookWhere =~ s/^\s*At //;
-			my $masterIndent = $indentDepth[$i];
 			for (my $j = $i+1; $j < @$linep; $j++) {
-				if ($indentDepth[$j] > $masterIndent) {
+				if ($$indentp[$j] > $$indentp[$i]) {
 					if ($$linep[$j] =~ /^\s*Splitting /) {
 						my $regex2 = extractRegex('Splitting at', $$linep[$j]);
 						my $takeChunkPerlCode;
