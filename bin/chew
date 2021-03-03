@@ -283,23 +283,24 @@ sub processSplit {
 	my $startingAdd = '';
 	if ($$linep[$i] =~ /\/$/) {
 		my $regex = extractRegex('Splitting at',$$linep[$i]);
-		$splitNum++;
-		my ($takeChunkPerlCode, $skipLines, @tempFieldNames) = processTakeChunk(($i+1), $splitNum, $linep, $indentp);
 		my $iterationChunk;
 		if ($cycleThrough eq 'lines') {
 			$iterationChunk = '$'.$curVName.'+'.$lineDeviation;
 		} else{
 			$iterationChunk = $lineDeviation;
 		}
+		$splitNum++;
 		$startingAdd .= "\t".'if ($'.$cycleThrough.'['.$iterationChunk.'] =~ /'.$regex.'/) {'."\n"
-			       ."\t\t".'my @array'.$splitNum.' = split /'.$regex.'/, $'.$cycleThrough.'['.$iterationChunk.'];'."\n"
-			       . $takeChunkPerlCode.'}';
+			       ."\t\t".'my @array'.$splitNum.' = split /'.$regex.'/, $'.$cycleThrough.'['.$iterationChunk.'];'."\n";
+		($splitNum, my $takeChunkPerlCode, my $skipLines, my @tempFieldNames) = processTakeChunk(($i+1), $splitNum, $linep, $indentp);
+		$startingAdd .= $takeChunkPerlCode.'}';
 		return($splitNum,$skipLines,$startingAdd,@tempFieldNames);
 	} else {
 		die 'ERROR: Illegal end to "Splitting" statement on line '.($i+1).", found: $$linep[$i]\n";
 	}
 }
 sub processTakeChunk {
+	#TODO correct array variable naming when being recursive
 	my ($startLine,$splitNum,$linep,$indentp) = @_;
 	my $outputVal = '';
 	my @localFieldNames;
@@ -324,7 +325,7 @@ sub processTakeChunk {
 			die 'ERROR: Correctly formatted Take statement expected on line '.($i+1).", found: $$linep[$i].\n";
 		}
 	}
-	return ($outputVal, $chunkLength, @localFieldNames);
+	return ($splitNum, $outputVal, $chunkLength, @localFieldNames);
 }
 sub processAtChunk {
 	my ($startLine,$splitNum,$curVName,$linep,$indentp) = @_;
