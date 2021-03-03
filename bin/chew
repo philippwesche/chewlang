@@ -81,7 +81,7 @@ $outputFormat = (split /^Output /, $lines[@lines-1])[1];
 
 my $curVName = $vNames[$vindex];
 $vindex++;
-my $splitNum = 1;
+my $splitNum = 0;
 $preamble .=    'my $processing = 0;'      ."\n";
 $bracketOpener .= 'for (my $'.$curVName.' = 0; $'.$curVName.' < @lines; $'.$curVName.'++) {'."\n";
 $closingBrackets = '}'.$closingBrackets;
@@ -283,11 +283,17 @@ sub processSplit {
 	my $startingAdd = '';
 	if ($$linep[$i] =~ /\/$/) {
 		my $regex = extractRegex('Splitting at',$$linep[$i]);
-		my ($takeChunkPerlCode, $skipLines, @tempFieldNames) = processTakeChunk(($i+1), $splitNum, $linep, $indentp);
-		$startingAdd .= "\t".'if ($'.$cycleThrough.'[$'.$curVName.'+'.$lineDeviation.'] =~ /'.$regex.'/) {'."\n"
-			       ."\t\t".'my @array'.$splitNum.' = split /'.$regex.'/, $'.$cycleThrough.'[$'.$curVName.'+'.$lineDeviation.'];'."\n"
-			       . $takeChunkPerlCode.'}';
 		$splitNum++;
+		my ($takeChunkPerlCode, $skipLines, @tempFieldNames) = processTakeChunk(($i+1), $splitNum, $linep, $indentp);
+		my $iterationChunk;
+		if ($cycleThrough eq 'lines') {
+			$iterationChunk = '$'.$curVName.'+'.$lineDeviation;
+		} else{
+			$iterationChunk = $lineDeviation;
+		}
+		$startingAdd .= "\t".'if ($'.$cycleThrough.'['.$iterationChunk.'] =~ /'.$regex.'/) {'."\n"
+			       ."\t\t".'my @array'.$splitNum.' = split /'.$regex.'/, $'.$cycleThrough.'['.$iterationChunk.'];'."\n"
+			       . $takeChunkPerlCode.'}';
 		return($splitNum,$skipLines,$startingAdd,@tempFieldNames);
 	} else {
 		die 'ERROR: Illegal end to "Splitting" statement on line '.($i+1).", found: $$linep[$i]\n";
@@ -296,20 +302,29 @@ sub processSplit {
 sub processTakeChunk {
 	my ($startLine,$splitNum,$linep,$indentp) = @_;
 	my $outputVal = '';
-	my @tempFieldNames;
+	my @localFieldNames;
 	my $chunkLength = 0;
 	for (my $i = $startLine; $i < @$linep; $i++) {
 		last if ($$indentp[$i] < $$indentp[$startLine]);
 		$chunkLength++;
 		if ($$linep[$i] =~ /^\s*Take [0-9]+ as [A-Za-z][A-Za-z0-9]*$/) {
 			my @array = split /Take | as /, $$linep[$i];
-			push @tempFieldNames, $array[2];
+			push @localFieldNames, $array[2];
 			$outputVal .= "\t\t".'push @{ $capturedData{'.$array[2].'} }, $array'.$splitNum.'['.$array[1].'] if defined($array'.$splitNum.'['.$array[1].']);'."\n";
+		} elsif ($$linep[$i] =~ /^\s*Taking [0-9]+$/) {	    # TODO should this be "At "? allow alternatives?
+			my $wantedLine = $$linep[$i];
+			$wantedLine =~ s/^\s*Taking //;
+			if ($$linep[$i+1] =~ /^\s+Splitting at /) {
+				($splitNum,my $splitChunkLength,my $newStartingAdd,my @tempFieldNames) = processSplit(($i+1),$splitNum,$linep,$indentp,'array'.$splitNum,$wantedLine);
+				$outputVal .= $newStartingAdd;
+				push @localFieldNames,@tempFieldNames;
+				$i += $splitChunkLength+1;
+			}
 		} else {
 			die 'ERROR: Correctly formatted Take statement expected on line '.($i+1).", found: $$linep[$i].\n";
 		}
 	}
-	return ($outputVal, $chunkLength, @tempFieldNames);
+	return ($outputVal, $chunkLength, @localFieldNames);
 }
 sub processAtChunk {
 	my ($startLine,$splitNum,$curVName,$linep,$indentp) = @_;
@@ -319,7 +334,7 @@ sub processAtChunk {
 		die 'ERROR: At statement expected on line '.($startLine+1).".\n";
 	}
 	for (my $i = $startLine; $i < @$linep; $i++) {
-		return ($outputVal, $splitNum, @localFieldNames) if $$indentp[$i] < $$indentp[$startLine];
+		last if $$indentp[$i] < $$indentp[$startLine];
 		if ($$linep[$i] =~ /^\s*(At) /) {
 			my $lookWhere = $$linep[$i];
 			$lookWhere =~ s/^\s*At //;
