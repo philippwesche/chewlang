@@ -316,9 +316,10 @@ sub processAtChunk {
 	my $outputVal = '';
 	my @localFieldNames;
 	unless ($$linep[$startLine] =~ /^\s+At ([+-]?[1-9]\d*|0)$/) {
-		die 'At statement expected on line '.($startLine+1).".\n";
+		die 'ERROR: At statement expected on line '.($startLine+1).".\n";
 	}
 	for (my $i = $startLine; $i < @$linep; $i++) {
+		return ($outputVal, $splitNum, @localFieldNames) if $$indentp[$i] < $$indentp[$startLine];
 		if ($$linep[$i] =~ /^\s*(At) /) {
 			my $lookWhere = $$linep[$i];
 			$lookWhere =~ s/^\s*At //;
@@ -337,8 +338,8 @@ sub processAtChunk {
 					last;
 				}
 			}
-		#} else {
-			#die 'ERROR: "Locating" on line '.($i+1).' must be followed by "At" statements.'."\n";
+		} else {
+			die 'ERROR: "Locating" on line '.($i+1).' must be followed by "At" statements, instead found: '."$$linep[$i]\n";
 		}
 	}
 	return ($outputVal,$splitNum,@localFieldNames);
