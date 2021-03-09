@@ -66,7 +66,7 @@ if ($lines[0] =~ /^Reading /) {
 			     .'my $res = $browser->get($filelist[$fi]);'."\n"
 			     .'die "ERROR at $filelist[$fi]\n", $res->status_line, "\n Aborting\n" unless $res->is_success;'."\n"
 			     .'my @lines = split /\n/, $res->decoded_content;'."\n"
-		             .'die "Could not get $filelist[$fi]\n" unless @lines;'."\n";
+		             .'die "Could not fetch $filelist[$fi]\n" unless @lines;'."\n";
 	} else {
 		$preamble2 .= 'my @filelist = ('.$fileStr.');'."\n"
 			     .'for (my $fi = 0; $fi < @filelist; $fi++) {'."\n"
@@ -192,7 +192,7 @@ for (my $i = 1; $i < (@lines-1); $i++) {
 	} elsif      ($lines[$i] =~ /^\s*Starting at \//) {
 		if ($lines[$i] =~ /\/$/) {
 			my $regex = extractRegex('Starting at', $lines[$i]);
-			$startingStatement .= "\t".'if ($lines[$'.$curVName.'] =~ /'.$regex.'/) {'."\n"
+			$startingStatement .= "\t".'if ($processing == 0 && $lines[$'.$curVName.'] =~ /'.$regex.'/) {'."\n"
 						   ."\t\t".'$processing = 1;'."\n"
 						   ."\t".'}'."\n"
 						   ."\t".'if ($processing == 1) {'."\n";
@@ -241,18 +241,18 @@ for (my $i = 1; $i < (@lines-1); $i++) {
 			die 'ERROR: Illegal end to "Capture" statement on line '.($i+1).".\n";
 		}
 	} elsif ($lines[$i] =~ /^\s*Splitting at \//) {
-		($splitNum, my $skipLines, my $startingAdd) = processSplit(\@fieldNames,$i,$splitNum,\@lines,\@indentDepth,'lines',0);
+		($splitNum, my $skipLines, my $startingAdd) = processSplit(\@fieldNames, $i, $splitNum, \@lines, \@indentDepth, 'lines', 0);
 		$startingStatement .= $startingAdd;
 		$i += $skipLines;
-	} elsif ($lines[$i] =~ /^\s*Locating around \//) {  # TODO add Looking as equivalent
+	} elsif ($lines[$i] =~ /^\s*(Locating|Looking) around \//) {
 		if ($lines[$i] =~ /\/$/) {
-			my $regex = extractRegex('Locating around', $lines[$i]);
+			my $regex = extractRegex('(Locating|Looking) around', $lines[$i]);
 			$startingStatement .= "\t".'if ($lines[$'.$curVName.'] =~ /'.$regex.'/) {'."\n";
 			my $masterIndent = $indentDepth[$i];
 			my $atChunkPerlCode;
 			for (my $j = $i+1; $j < @lines; $j++) {
 				if ($indentDepth[$j] <= $masterIndent) {
-					($atChunkPerlCode, $splitNum) = processAtChunk(\@fieldNames,($i+1), $splitNum, $curVName, \@lines, \@indentDepth);
+					($atChunkPerlCode, $splitNum) = processAtChunk(\@fieldNames, ($i+1), $splitNum, $curVName, \@lines, \@indentDepth);
 					$startingStatement .= $atChunkPerlCode.'}';
 					$i = $j-1;
 					last;
@@ -295,7 +295,8 @@ my $outputStatement = $fieldnameLine
 		     .'my $warnings = "";'."\n"
 		     .'foreach (@fieldNames) {'."\n"
 		     .'	if ( $outputRowCount != 0 && $outputRowCount != @{ $capturedData{$_} } ) {'."\n"
-		     .' 	$warnings .= "WARNING: Output column \"$_\" has a different length than a previous column.\n";'
+		     .' 	$warnings .='."\n"
+		     .'		   "WARNING: Output column \"$_\" has a different length than a previous column.\n";'."\n"
 		     .'	}'."\n"
 		     .'	if ( $outputRowCount < @{ $capturedData{$_} } ) {'."\n"
 		     .'		$outputRowCount = @{ $capturedData{$_} };'."\n"
@@ -305,7 +306,8 @@ my $outputStatement = $fieldnameLine
 		     .$dropInsert
 		     .'	$outputLines[$i] = "";'."\n"
 		     .'	foreach (@fieldNames) {'."\n"
-		     .'		if ( ${ $capturedData{$_} }[$i] || ${ $capturedData{$_} }[$i] == 0 ) { $outputLines[$i] .= ${ $capturedData{$_} }[$i] }'."\n"
+		     .'		if ( defined( ${ $capturedData{$_} }[$i] ) ) {'."\n"
+		     .'			$outputLines[$i] .= ${ $capturedData{$_} }[$i];    }'."\n"
 		     .'		$outputLines[$i] .= "\t";'."\n"    #prevent column slippage by inserting tab even if no data captured for this col
 		     .$dropClosure
 		     .'} }'."\n"
@@ -343,10 +345,25 @@ sub processSplit {
 		$startingAdd .= "\t".'if ($'.$cycleThrough.'['.$iterationChunk.'] =~ /'.$regex.'/) {'."\n"
 			       ."\t\t".'my @array'.$splitNum.' = split /'.$regex.'/, $'.$cycleThrough.'['.$iterationChunk.'];'."\n";
 		($splitNum, my $takeChunkPerlCode, my $skipLines) = processTakeChunk($fieldnamep,($i+1), $splitNum, $linep, $indentp);
-		$startingAdd .= $takeChunkPerlCode.'}';
+		$startingAdd .= $takeChunkPerlCode."\t}\n";
 		return($splitNum,$skipLines,$startingAdd);
 	} else {
 		die 'ERROR: Illegal end to "Splitting" statement on line '.($i+1).", found: $$linep[$i]\n";
+	}
+}
+sub processCleanChunk {
+	my ($startLine,$linep,$indentp) = @_;
+	my @cleanExpressions;
+	my $chunkLength = 0;
+	for (my $i = $startLine; $i < @$linep; $i++) {
+		if ($$linep[$i] =~ /^\s+Clean \// && $$linep[$i] =~ /\/$/) {
+			$chunkLength++;
+			my $cleanStatement = $$linep[$i];
+			$cleanStatement =~ s/^\s+Clean //;
+			push @cleanExpressions, $cleanStatement;
+		} else {
+			return ($chunkLength, @cleanExpressions);
+		}
 	}
 }
 sub processTakeChunk {
@@ -360,7 +377,22 @@ sub processTakeChunk {
 			my @array = split /Take | as /, $$linep[$i];
 			checkInFieldname($fieldnamep,$array[2]);
 			$outputVal .= "\t\t".'push @{ $capturedData{'.$array[2].'} }, $array'.$splitNum.'['.$array[1].'] if defined($array'.$splitNum.'['.$array[1].']);'."\n";
-		} elsif ($$linep[$i] =~ /^\s*Taking [0-9]+$/) {	    # TODO should this be "At "? allow alternatives?
+		} elsif ($$linep[$i] =~ /^\s*Taking [0-9]+ as [A-Za-z][A-Za-z0-9]*$/) {
+			unless ( $$indentp[$i+1] == $$indentp[$i]+1
+			      && $$linep[$i+1]   =~ /^\s+Clean \//
+			      && $$linep[$i+1]   =~ /\/$/            ) {
+				die 'ERROR: "Taking [...] as" on line '.$i.' must be "Take" or followed by "Clean" statement.'."\n";
+			}
+			my @array = split /Taking | as /, $$linep[$i];
+			checkInFieldname($fieldnamep,$array[2]);
+			my ($skipLines, @cleanLines) = processCleanChunk(($i+1), $linep, $indentp);
+			$i += $skipLines;
+			$outputVal .= "\t\t".'if (defined($array'.$splitNum.'['.$array[1].'])) {'."\n";
+			foreach (@cleanLines) {
+				$outputVal .= "\t\t\t".'$array'.$splitNum.'['.$array[1].'] =~ s'.$_."g;\n"; # NB substitution is currently global by default!
+			}
+			$outputVal .= "\t\t\t".'push @{ $capturedData{'.$array[2].'} }, $array'.$splitNum.'['.$array[1].'];'."\n\t\t}\n";
+		} elsif ($$linep[$i] =~ /^\s*Taking [0-9]+$/) {	    # TODO allow "At " as an alternative?
 			my $wantedLine = $$linep[$i];
 			$wantedLine =~ s/^\s*Taking //;
 			if ($$linep[$i+1] =~ /^\s+Splitting at /) {
@@ -369,6 +401,7 @@ sub processTakeChunk {
 				$i += $splitChunkLength+1;
 			}
 		} elsif ($$linep[$i] =~ /^\s*Follow [0-9]+$/) {
+			# TODO switch to http(s) mode if you're in local file mode and encounter http(s) to follow
 			my $findex = $$linep[$i];
 			$findex =~ s/^\s*Follow //g;
 			my $condInsert = '';
@@ -393,7 +426,7 @@ sub processTakeChunk {
 }
 sub processAtChunk {
 	# "Locating" bracket can include Splitting, Capture, Cutting, others? 
-	my ($fieldnamep,$startLine,$splitNum,$curVName,$linep,$indentp) = @_;
+	my ( $fieldnamep, $startLine, $splitNum, $curVName, $linep, $indentp ) = @_;
 	my $outputVal = '';
 	unless ($$linep[$startLine] =~ /^\s+At ([+-]?[1-9]\d*|0)$/) {
 		die 'ERROR: At statement expected on line '.($startLine+1).".\n";
@@ -416,7 +449,7 @@ sub processAtChunk {
 				}
 			}
 		} else {
-			die 'ERROR: "Locating" on line '.($i+1).' must be followed by "At" statements, instead found: '."$$linep[$i]\n";
+			die 'ERROR: "Locating" or "Looking" on line '.($i+1).' must be followed by "At" statements, instead found: '."$$linep[$i]\n";
 		}
 	}
 	return ($outputVal,$splitNum);
