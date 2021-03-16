@@ -58,7 +58,7 @@ As HTML in particular is predominantly line break agnostic, some websites are de
 * Reframe [/*replacement expression*/]
   * Reframe on its own cuts at every '><' border; with a replacement regex of the format /*where you find this*/*replace with this*/, it becomes more versatile. If the replacement expression contains one or several newline characters, the file will be broken into lines at those points.
 
-Reframing is one of the first things you'll want to instruct Chew to do when you're starting to write a script, and so output from the reframe action will be printed when your *Reframe* line is the last line in your file, to help you check your working.
+When it's needed, reframing is one of the first things you'll want to instruct Chew to do when you're starting to write a script, and so output from the reframe action will be printed when your *Reframe* line is the last line in your file, to help you check your working.
 
 ## Output data cleaning
 Output data cleaning can also be performed in Chew:
