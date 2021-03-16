@@ -39,6 +39,17 @@ GetOptions ("code=s" => \$outputProgLang);
 
 open IN, $ARGV[0];
 chomp(my @lines = <IN>);
+#remove comments and excess white space
+for (my $i = 0; $i < @lines; $i++) {
+	if ($lines[$i] =~ /^\s*\#/) {
+		splice @lines, $i, 1;
+		$i--;
+	}
+	#$lines[$i] =~ s/\s*\#[A-Za-z0-9\s\,\.\;\:\!\?\_\-\+\=\<\>\~\@\$\%\`\$\^\\]*$//; #comments
+	#TODO support slashes and quote marks in in-line comments; in-line comments disabled until full support
+	$lines[$i] =~ s/\s*$//;	#trailing white space
+}
+
 my $preamble1 = "use strict;use warnings;use sigtrap;\n"
 	       .'use open ":std", ":encoding(UTF-8)";'."\n";
 my $globalDeclarations .= 'my %capturedData;'."\n";
@@ -79,10 +90,15 @@ if ($lines[0] =~ /^Reading /) {
 
 #special early exit if reframe is the last command in the file
 if ($lines[@lines-1] =~ /^Reframe \//) {
-	# TODO reframe with regex
+	my $regex = $lines[@lines-1];
+	$regex =~ s/^\s*Reframe //;
+	my $earlyOutput = $preamble1.$globalDeclarations.$preamble2
+			  .processReframe(0,$regex).$closingBrackets;
+	dispatch($outputProgLang,'tsv+header',$earlyOutput);
+	exit;
 } elsif ($lines[@lines-1] =~ /^Reframe$/) {
 	my $earlyOutput = $preamble1.$globalDeclarations.$preamble2
-			  .processReframeSimple(0).$closingBrackets;
+			  .processReframe(0,'/\>\</>\n</').$closingBrackets;
 	dispatch($outputProgLang,'tsv+header',$earlyOutput);
 	exit;
 }
@@ -187,8 +203,12 @@ for (my $i = 1; $i < (@lines-1); $i++) {
 }
 #main processing
 for (my $i = 1; $i < (@lines-1); $i++) {
-	if ($lines[$i] =~ /^\s*Reframe$/) {   # TODO reframe with regex
-		$preamble2 .= processReframeSimple(1);
+	if ($lines[$i] =~ /^\s*Reframe \//) {
+		my $regex = $lines[$i];
+		$regex =~ s/^\s*Reframe //;
+		$preamble2 .= processReframe(1,$regex);
+	} elsif ($lines[$i] =~ /^\s*Reframe$/) {
+		$preamble2 .= processReframe(1,'/\>\</>\n</');
 	} elsif      ($lines[$i] =~ /^\s*Starting at \//) {
 		if ($lines[$i] =~ /\/$/) {
 			my $regex = extractRegex('Starting at', $lines[$i]);
@@ -342,7 +362,7 @@ sub processSplit {
 			$iterationChunk = $lineDeviation;
 		}
 		$splitNum++;
-		$startingAdd .= "\t".'if ($'.$cycleThrough.'['.$iterationChunk.'] =~ /'.$regex.'/) {'."\n"
+		$startingAdd .= "\t".'if (exists($'.$cycleThrough.'['.$iterationChunk.']) && $'.$cycleThrough.'['.$iterationChunk.'] =~ /'.$regex.'/) {'."\n"
 			       ."\t\t".'my @array'.$splitNum.' = split /'.$regex.'/, $'.$cycleThrough.'['.$iterationChunk.'];'."\n";
 		($splitNum, my $takeChunkPerlCode, my $skipLines) = processTakeChunk($fieldnamep,($i+1), $splitNum, $linep, $indentp);
 		$startingAdd .= $takeChunkPerlCode."\t}\n";
@@ -454,16 +474,14 @@ sub processAtChunk {
 	}
 	return ($outputVal,$splitNum);
 }
-sub processReframeSimple {
+sub processReframe {
 	my $continue = $_[0];
+	my $regex = $_[1];
 	my $retStr = 'my @newlines;
-foreach (@lines) {
-	my @array = split /\>\</, $_;
-	push @newlines, $array[0].">";
-	for (my $ey = 1; $ey < @array; $ey++) {
-		push @newlines, "<".$array[$ey].">";
-	}
-	push @newlines, "<".$array[@array-1];
+foreach my $line (@lines) {
+	$line =~ s'.$regex.'g;
+	my @array = split /\n/, $line;
+	push @newlines, @array;
 }'."\n";
 	if ($continue) {
 		return $retStr.'@lines = @newlines;'."\n";
