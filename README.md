@@ -25,12 +25,6 @@ A quick live demo can be found at http://chewlang.com
   * Obligatory statement to specify output format. The first supported format is "tsv+header". The Output statement must be the last line of a chew file.
 
 ## A few essential commands ("verbs")
-* Starting at /*expression*/
-  * Can be used to indicate that nothing on or after a line matching the *Starting at* expression should be processed. The *expression* should be a regular expression. The Starting statement is not obligatory.
-
-* Stopping at /*expression*/
-  * Can be used to indicate that nothing prior to a line matching the *Stopping at* expression should be processed. The *expression* should be a regular expression. The Stopping statement is not obligatory.
-
 * Splitting at /*expression*/
   * This divides a line into chunks using *expression* as a divider. Splitting must be followed by one or several *Take* statements.
 
@@ -46,11 +40,25 @@ The locating context allows accessing the lines around a matching line. It is si
 * At *number*
   * Selects a line for further processing relative to the origin. "At 0" is the same line as the origin; negative numbers can be used to select lines before the origin, positive numbers after it. "At *number*" in itself does nothing. It requires further statements such as Splitting, to determine the action to be taken.
 
+## Defining a processing area
+* Starting at /*expression*/
+  * Can be used to indicate that nothing on or after a line matching the *Starting at* expression should be processed. The *expression* should be a regular expression.
+
+* Stopping at /*expression*/
+  * Can be used to indicate that nothing prior to a line matching the *Stopping at* expression should be processed. The *expression* should be a regular expression.
+
+* Skipping *number* at /*expression*/
+  * Can be used to indicate that processing should "take a break" for ("skip") *number* lines when *expression* is encountered. The *expression* should be a regular expression.
+
+The three above instructions should be used after *Reading* and before beginning the rest of your processing.
+
 ## Dealing with input formatting
 As HTML in particular is predominantly line break agnostic, some websites are delivered as a single line of code. We can remedy this via:
 
 * Reframe [/*replacement expression*/]
-  * Reframe on its own cuts at every '><' border; with a replacement regex of the format /*where you find this*/*replace with this*/, it becomes more versatile. If the replacement expression contains one or several newline characters, the file will be broken into lines at those points. Reframing is one of the first things you'll want to instruct Chew to do when you're starting to write a script, and so output from the reframe action will be printed when your *Reframe* line is the last line in your file, to help you check your working.
+  * Reframe on its own cuts at every '><' border; with a replacement regex of the format /*where you find this*/*replace with this*/, it becomes more versatile. If the replacement expression contains one or several newline characters, the file will be broken into lines at those points.
+
+Reframing is one of the first things you'll want to instruct Chew to do when you're starting to write a script, and so output from the reframe action will be printed when your *Reframe* line is the last line in your file, to help you check your working.
 
 ## Output data cleaning
 Output data cleaning can also be performed in Chew:
