@@ -69,6 +69,9 @@ Output data cleaning can also be performed in Chew:
 * Drop rows where *fieldname* matches /*expression*/
   * In contrast with Clean, which is applied immediately during data capture, and takes effect on only one field, *Drop rows* is applied just prior to output and drops the entire row across all data fields. To those coming from SQL, the statement will look quite familiar.
 
+## Native code integration
+Coming soon
+
 # Current status of feature creep
 12/19 completed approximately
 
