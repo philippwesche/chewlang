@@ -60,6 +60,8 @@ my $stoppingStatement = '';
 my $skippingStatement = '';
 my $dropInsert = '';
 my $dropClosure = '';
+my $functionStr = '';
+my $completeURLFuncAdded = 0;
 my $closingBrackets = "}\n";
 my @vNames = ('a','b','c','d','e','f','g','h','i','j','k','l','m','n','o','p','r','s','t','u','v','w','x','y','z','aa','ab','ac','ad','ae','af','ag','ah','ai','aj','ak','al','am','an','ao','ap'); #interim solution
 my $vindex = 0;   # put some... have you seen the movie?
@@ -90,6 +92,7 @@ if ($lines[0] =~ /^Reading /) {
 
 #special early exit if reframe is the last command in the file
 if ($lines[@lines-1] =~ /^Reframe \//) {
+	# TODO make it safer
 	my $regex = $lines[@lines-1];
 	$regex =~ s/^\s*Reframe //;
 	my $earlyOutput = $preamble1.$globalDeclarations.$preamble2
@@ -204,6 +207,7 @@ for (my $i = 1; $i < (@lines-1); $i++) {
 #main processing
 for (my $i = 1; $i < (@lines-1); $i++) {
 	if ($lines[$i] =~ /^\s*Reframe \//) {
+		# TODO make it safer
 		my $regex = $lines[$i];
 		$regex =~ s/^\s*Reframe //;
 		$preamble2 .= processReframe(1,$regex);
@@ -255,6 +259,8 @@ for (my $i = 1; $i < (@lines-1); $i++) {
 			$regex = sanitiseRegex($regex);
 			checkInFieldname( \@fieldNames, $array2[$#array2] );
 			$startingStatement .= "\t".'if ($lines[$'.$curVName.'] =~ /'.$regex.'/) {'."\n"
+			#TODO add condition, same as elsewhere
+					     ."\t\t".'$fieldInitiations{'.$array2[$#array2].'}++;'."\n"
 					     ."\t\t".'push @{ $capturedData{'.$array2[$#array2].'} }, substr($lines[$'.$curVName.'], $-[0], $+[0] - $-[0]);'."\n\t\t".'# Note about the above: the expression contained in substr()'."\n\t\t".'# is some slightly obscure Perl magic that refers to the last-matched string'."\n"
 					     ."\t}\n";
 		} else {
@@ -299,28 +305,35 @@ for (my $i = 1; $i < (@lines-1); $i++) {
 }
 
 # CONSTRUCTING OUTPUT
-my $fieldnameLine = 'my @fieldNames = (';
+$globalDeclarations .= 'my @fieldNames = (';
 if (@fieldNames) {
 	foreach (@fieldNames) {
-		$fieldnameLine .= '"'.$_.'",';
+		$globalDeclarations .= '"'.$_.'",';
 	}
-	chop $fieldnameLine;
-	$fieldnameLine .= ");\n";
+	chop $globalDeclarations;
+	$globalDeclarations .= ');
+my %fieldInitiations;
+foreach (@fieldNames) {
+	$fieldInitiations{$_} = 0;
+}'."\n";
 } else {
 	die "ERROR: No valid data capture instructions found in script.\n";
 }
-my $outputStatement = $fieldnameLine
-		     .'my @outputLines;'."\n"
+my $outputStatement = 'my @outputLines;'."\n"
 		     .'my $outputRowCount = 0;'."\n"
 		     .'my $warnings = "";'."\n"
 		     .'foreach (@fieldNames) {'."\n"
-		     .'	if ( $outputRowCount != 0 && $outputRowCount != @{ $capturedData{$_} } ) {'."\n"
-		     .' 	$warnings .='."\n"
+		     .'  if ( $fieldInitiations{$_} ) {'."\n"
+		     .'    if ( $outputRowCount != 0 && $outputRowCount != @{ $capturedData{$_} } ) {'."\n"
+		     .'      $warnings .='."\n"
 		     .'		   "WARNING: Output column \"$_\" has a different length than a previous column.\n";'."\n"
-		     .'	}'."\n"
-		     .'	if ( $outputRowCount < @{ $capturedData{$_} } ) {'."\n"
-		     .'		$outputRowCount = @{ $capturedData{$_} };'."\n"
-		     .'	}'."\n"
+		     .'    }'."\n"
+		     .'    if ( $outputRowCount < @{ $capturedData{$_} } ) {'."\n"
+		     .'      $outputRowCount = @{ $capturedData{$_} };'."\n"
+		     .'    }'."\n"
+		     .'  } else {'."\n"
+		     .'    $warnings .= "\nWARNING: Output column \"$_\" contains no data.\n";'."\n"
+		     .'  }'."\n"
 		     .'}'."\n"
 		     .'for (my $i = 0; $i < $outputRowCount; $i++) {'."\n"
 		     .$dropInsert
@@ -334,9 +347,8 @@ my $outputStatement = $fieldnameLine
 		     .'foreach (@fieldNames) { print "$_\t" }'."\n"
 		     .'print "\n";'."\n"
 		     .'foreach (@outputLines) { if ($_) { print "$_\n" } }'."\n"
-		     .'warn $warnings if $warnings;'
-		     ;
-my $output = $preamble1.$globalDeclarations.$preamble2.$bracketOpener.$stoppingStatement.$startingStatement.$skippingStatement.$closingBrackets.$outputStatement;
+		     .'warn $warnings if $warnings;'."\n";
+my $output = $preamble1.$globalDeclarations.$preamble2.$bracketOpener.$stoppingStatement.$startingStatement.$skippingStatement.$closingBrackets.$outputStatement.$functionStr;
 
 dispatch($outputProgLang,$outputFormat,$output);
 
@@ -362,6 +374,7 @@ sub processSplit {
 			$iterationChunk = $lineDeviation;
 		}
 		$splitNum++;
+		#TODO consider catching the warning and passing it on to the user rather than using plain exists() - user might want to know capture failed here
 		$startingAdd .= "\t".'if (exists($'.$cycleThrough.'['.$iterationChunk.']) && $'.$cycleThrough.'['.$iterationChunk.'] =~ /'.$regex.'/) {'."\n"
 			       ."\t\t".'my @array'.$splitNum.' = split /'.$regex.'/, $'.$cycleThrough.'['.$iterationChunk.'];'."\n";
 		($splitNum, my $takeChunkPerlCode, my $skipLines) = processTakeChunk($fieldnamep,($i+1), $splitNum, $linep, $indentp);
@@ -380,6 +393,7 @@ sub processCleanChunk {
 			$chunkLength++;
 			my $cleanStatement = $$linep[$i];
 			$cleanStatement =~ s/^\s+Clean //;
+			#TODO make it safer
 			push @cleanExpressions, $cleanStatement;
 		} else {
 			return ($chunkLength, @cleanExpressions);
@@ -396,7 +410,8 @@ sub processTakeChunk {
 		if ($$linep[$i] =~ /^\s*Take [0-9]+ as [A-Za-z][A-Za-z0-9]*$/) {
 			my @array = split /Take | as /, $$linep[$i];
 			checkInFieldname($fieldnamep,$array[2]);
-			$outputVal .= "\t\t".'push @{ $capturedData{'.$array[2].'} }, $array'.$splitNum.'['.$array[1].'] if defined($array'.$splitNum.'['.$array[1].']);'."\n";
+			$outputVal .= "\t\t".'$fieldInitiations{'.$array[2].'}++ if defined($array'.$splitNum.'['.$array[1].']);'."\n"
+				     ."\t\t".'push @{ $capturedData{'.$array[2].'} }, $array'.$splitNum.'['.$array[1].'] if defined($array'.$splitNum.'['.$array[1].']);'."\n";
 		} elsif ($$linep[$i] =~ /^\s*Taking [0-9]+ as [A-Za-z][A-Za-z0-9]*$/) {
 			unless ( $$indentp[$i+1] == $$indentp[$i]+1
 			      && $$linep[$i+1]   =~ /^\s+Clean \//
@@ -411,7 +426,9 @@ sub processTakeChunk {
 			foreach (@cleanLines) {
 				$outputVal .= "\t\t\t".'$array'.$splitNum.'['.$array[1].'] =~ s'.$_."g;\n"; # NB substitution is currently global by default!
 			}
-			$outputVal .= "\t\t\t".'push @{ $capturedData{'.$array[2].'} }, $array'.$splitNum.'['.$array[1].'];'."\n\t\t}\n";
+			#TODO add condition, same as a little further above
+			$outputVal .= "\t\t".'$fieldInitiations{'.$array[2].'}++;'."\n"
+				     ."\t\t\t".'push @{ $capturedData{'.$array[2].'} }, $array'.$splitNum.'['.$array[1].'];'."\n\t\t}\n";
 		} elsif ($$linep[$i] =~ /^\s*Taking [0-9]+$/) {	    # TODO allow "At " as an alternative?
 			my $wantedLine = $$linep[$i];
 			$wantedLine =~ s/^\s*Taking //;
@@ -426,7 +443,7 @@ sub processTakeChunk {
 			$findex =~ s/^\s*Follow //g;
 			my $condInsert = '';
 			my $iterInsert   = '';
-			if ($$linep[$i+1] =~ /^\s+Times [0-9]*$/) {
+			if ($$linep[$i+1] =~ /^\s+Times [0-9]*$/) {   #TODO allow "Limit" as alternative
 				my $times = $$linep[$i+1];
 				$times =~ s/^\s*Times //;
 				$i++;
@@ -436,8 +453,32 @@ sub processTakeChunk {
 			}
 			$outputVal .= "\t\t".'if ('.$condInsert.'defined($array'.$splitNum.'['.$findex.'])) {'."\n"
 				     .$iterInsert
-				     ."\t\t\t".'push @filelist, $array'.$splitNum.'['.$findex.'];'."\n"
+				     ."\t\t\t".'push @filelist, completeURL($array'.$splitNum.'['.$findex.'], $filelist[0]);'."\n"  #TODO eliminate need to assume that $filelist[0] is a proper URL
 				     ."\t\t".'}'."\n";   # easier to read
+			unless ($completeURLFuncAdded) {
+				$functionStr .= 
+'sub completeURL {
+	if ($_[0] =~ /^\//) {
+		my @chars = split //, $_[1];
+		my $foundDoubles = 0;
+		for (my $i = 1; $i < @chars; $i++) {
+			if (!$foundDoubles) {
+				if ($chars[$i-1] eq "/" && $chars[$i] eq "/") {
+					$foundDoubles = 1;
+				}
+			} else {
+				if ($chars[$i] eq "/") {
+					my $server = join "", @chars[0..($i-1)];
+					return $server.$_[0];
+				}
+			}
+		}
+	} else {
+		return $_[0];
+	}
+}';			#TODO add support for relative URLs not starting with a slash
+			}
+			$completeURLFuncAdded = 1;
 		} else {
 			die 'ERROR: Correctly formatted Take statement expected on line '.($i+1).", found: $$linep[$i].\n";
 		}
