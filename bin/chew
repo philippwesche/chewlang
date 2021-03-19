@@ -62,7 +62,9 @@ my $dropInsert = '';
 my $dropClosure = '';
 my $functionStr = '';
 my $completeURLFuncAdded = 0;
+my $nonChewCode = '';
 my $closingBrackets = "}\n";
+my $outputFormat;
 my @vNames = ('a','b','c','d','e','f','g','h','i','j','k','l','m','n','o','p','r','s','t','u','v','w','x','y','z','aa','ab','ac','ad','ae','af','ag','ah','ai','aj','ak','al','am','an','ao','ap'); #interim solution
 my $vindex = 0;   # put some... have you seen the movie?
 if ($lines[0] =~ /^Reading /) {
@@ -72,19 +74,19 @@ if ($lines[0] =~ /^Reading /) {
 	my $fileStr = expandToPerlFilelistString($url);
 	if ($lines[0] =~ /^Reading https?\:\/\//) {
 		$preamble1 .= 'use LWP 5.64;'."\n"
-			     .'my $browser = LWP::UserAgent->new;'."\n"
-			     .'$browser->agent("Mozilla/5.0");'."\n";
-		$preamble2 .= 'my @filelist = ('.$fileStr.');'."\n"
-			     .'for (my $fi = 0; $fi < @filelist; $fi++) {'."\n"
-			     .'my $res = $browser->get($filelist[$fi]);'."\n"
-			     .'die "ERROR at $filelist[$fi]\n", $res->status_line, "\n Aborting\n" unless $res->is_success;'."\n"
-			     .'my @lines = split /\n/, $res->decoded_content;'."\n"
-		             .'die "Could not fetch $filelist[$fi]\n" unless @lines;'."\n";
+			     .'my $chewBrowser = LWP::UserAgent->new;'."\n"
+			     .'$chewBrowser->agent("Mozilla/5.0");'."\n";
+		$preamble2 .= 'my @fileList = ('.$fileStr.');'."\n"
+			     .'for (my $fi = 0; $fi < @fileList; $fi++) {'."\n"
+			     .'my $chewRes = $chewBrowser->get($fileList[$fi]);'."\n"
+			     .'die "ERROR at $fileList[$fi]\n", $chewRes->status_line, "\n Aborting\n" unless $chewRes->is_success;'."\n"
+			     .'my @chewLines = split /\n/, $chewRes->decoded_content;'."\n"
+		             .'die "Could not fetch $fileList[$fi]\n" unless @chewLines;'."\n";
 	} else {
-		$preamble2 .= 'my @filelist = ('.$fileStr.');'."\n"
-			     .'for (my $fi = 0; $fi < @filelist; $fi++) {'."\n"
-			     .'open IN, $filelist[$fi];'."\n"
-			     .'chomp(my @lines = <IN>);'."\n";
+		$preamble2 .= 'my @fileList = ('.$fileStr.');'."\n"
+			     .'for (my $fi = 0; $fi < @fileList; $fi++) {'."\n"
+			     .'open IN, $fileList[$fi];'."\n"
+			     .'chomp(my @chewLines = <IN>);'."\n";
 	}
 } else {
 	die 'ERROR: No "Reading" instruction found in first line.'."\n";
@@ -106,20 +108,25 @@ if ($lines[@lines-1] =~ /^Reframe \//) {
 	exit;
 }
 
+#checking output conditions are defined
 unless ($lines[@lines-1] =~ /^Output /) {
-	die "ERROR: No output format specified in last line.\n";
+	for (my $i = 1; $i < @lines; $i++) {
+		if ($lines[$i] =~ /^Hand-over$/i) {
+			$nonChewCode = join ("\n", @lines[($i+1)..(@lines-1)]);
+			splice @lines, $i+1, (@lines-$i);   # removing non-chew lines early to avoid errors later
+			last;
+		}
+		if ($i == (@lines-1)) {
+			die "ERROR: Neither output format nor hand-over were specified. Must have at least one.\n";
+		}
+	}
 }
-unless ($lines[@lines-1] =~ /^Output tsv\+header$/) {
-	die "ERROR: Specified output format not known.\n";
-}
-my $outputFormat;
-$outputFormat = (split /^Output /, $lines[@lines-1])[1];
 
 my $curVName = $vNames[$vindex];
 $vindex++;
 my $splitNum = 0;
 $preamble2 .=	   'my $processing = 0;'      ."\n";
-$bracketOpener .=  'for (my $'.$curVName.' = 0; $'.$curVName.' < @lines; $'.$curVName.'++) {'."\n";
+$bracketOpener .=  'for (my $'.$curVName.' = 0; $'.$curVName.' < @chewLines; $'.$curVName.'++) {'."\n";
 $closingBrackets = '}'.$closingBrackets;
 
 my $indentLevel = 0;
@@ -205,7 +212,7 @@ for (my $i = 1; $i < (@lines-1); $i++) {
 	}
 }
 #main processing
-for (my $i = 1; $i < (@lines-1); $i++) {
+for (my $i = 1; $i < @lines; $i++) {
 	if ($lines[$i] =~ /^\s*Reframe \//) {
 		# TODO make it safer
 		my $regex = $lines[$i];
@@ -216,7 +223,7 @@ for (my $i = 1; $i < (@lines-1); $i++) {
 	} elsif      ($lines[$i] =~ /^\s*Starting at \//) {
 		if ($lines[$i] =~ /\/$/) {
 			my $regex = extractRegex('Starting at', $lines[$i]);
-			$startingStatement .= "\t".'if ($processing == 0 && $lines[$'.$curVName.'] =~ /'.$regex.'/) {'."\n"
+			$startingStatement .= "\t".'if ($processing == 0 && $chewLines[$'.$curVName.'] =~ /'.$regex.'/) {'."\n"
 						   ."\t\t".'$processing = 1;'."\n"
 						   ."\t".'}'."\n"
 						   ."\t".'if ($processing == 1) {'."\n";
@@ -228,7 +235,7 @@ for (my $i = 1; $i < (@lines-1); $i++) {
 	} elsif ($lines[$i] =~ /^\s*Stopping at \//) {
 		if ($lines[$i] =~ /\/$/) {
 			my $regex = extractRegex('Stopping at', $lines[$i]);
-			$stoppingStatement .= "\t".'if ($lines[$'.$curVName.'] =~ /'.$regex.'/) {'."\n"
+			$stoppingStatement .= "\t".'if ($chewLines[$'.$curVName.'] =~ /'.$regex.'/) {'."\n"
 						   ."\t\t".'last;'."\n"
 						   ."\t".'}'."\n";
 		} else {
@@ -245,7 +252,7 @@ for (my $i = 1; $i < (@lines-1); $i++) {
 			if ($hasStartStatement) {
 				$startingStatement .= '$processing == 1 && '
 			}
-			$startingStatement .= '$lines[$'.$curVName.'] =~ /'.$regex.'/) {'."\n"
+			$startingStatement .= '$chewLines[$'.$curVName.'] =~ /'.$regex.'/) {'."\n"
 					    ."\t\t".'$'.$curVName.' += '.$array[1].";\n"
 					    ."\t}\n";
 		} else {
@@ -258,30 +265,32 @@ for (my $i = 1; $i < (@lines-1); $i++) {
 			my $regex = join '/ as ', @array2[0..(@array2-2)];
 			$regex = sanitiseRegex($regex);
 			checkInFieldname( \@fieldNames, $array2[$#array2] );
-			$startingStatement .= "\t".'if ($lines[$'.$curVName.'] =~ /'.$regex.'/) {'."\n"
+			$startingStatement .= "\t".'if ($chewLines[$'.$curVName.'] =~ /'.$regex.'/) {'."\n"
 			#TODO add condition, same as elsewhere
-					     ."\t\t".'$fieldInitiations{'.$array2[$#array2].'}++;'."\n"
-					     ."\t\t".'push @{ $capturedData{'.$array2[$#array2].'} }, substr($lines[$'.$curVName.'], $-[0], $+[0] - $-[0]);'."\n\t\t".'# Note about the above: the expression contained in substr()'."\n\t\t".'# is some slightly obscure Perl magic that refers to the last-matched string'."\n"
+					     ."\t\t".'$chewFieldInitiations{'.$array2[$#array2].'}++;'."\n"
+					     ."\t\t".'push @{ $capturedData{'.$array2[$#array2].'} }, substr($chewLines[$'.$curVName.'], $-[0], $+[0] - $-[0]);'."\n\t\t".'# Note about the above: the expression contained in substr()'."\n\t\t".'# is some slightly obscure Perl magic that refers to the last-matched string'."\n"
 					     ."\t}\n";
 		} else {
 			die 'ERROR: Illegal end to "Capture" statement on line '.($i+1).".\n";
 		}
 	} elsif ($lines[$i] =~ /^\s*Splitting at \//) {
-		($splitNum, my $skipLines, my $startingAdd) = processSplit(\@fieldNames, $i, $splitNum, \@lines, \@indentDepth, 'lines', 0);
+		($splitNum, my $skipLines, my $startingAdd) = processSplit(\@fieldNames, $i, $splitNum, \@lines, \@indentDepth, 'chewLines', 0);
 		$startingStatement .= $startingAdd;
 		$i += $skipLines;
 	} elsif ($lines[$i] =~ /^\s*(Locating|Looking) around \//) {
 		if ($lines[$i] =~ /\/$/) {
 			my $regex = extractRegex('(Locating|Looking) around', $lines[$i]);
-			$startingStatement .= "\t".'if ($lines[$'.$curVName.'] =~ /'.$regex.'/) {'."\n";
+			$startingStatement .= "\t".'if ($chewLines[$'.$curVName.'] =~ /'.$regex.'/) {'."\n";
 			my $masterIndent = $indentDepth[$i];
 			my $atChunkPerlCode;
-			for (my $j = $i+1; $j < @lines; $j++) {
-				if ($indentDepth[$j] <= $masterIndent) {
-					($atChunkPerlCode, $splitNum) = processAtChunk(\@fieldNames, ($i+1), $splitNum, $curVName, \@lines, \@indentDepth);
-					$startingStatement .= $atChunkPerlCode.'}';
-					$i = $j-1;
-					last;
+			if ($i < (@lines-1) ) {
+				for (my $j = $i+1; $j < @lines; $j++) {
+					if ($indentDepth[$j] <= $masterIndent) {
+						($atChunkPerlCode, $splitNum) = processAtChunk(\@fieldNames, ($i+1), $splitNum, $curVName, \@lines, \@indentDepth);
+						$startingStatement .= $atChunkPerlCode.'}';
+						$i = $j-1;
+						last;
+					}
 				}
 			}
 		} else {
@@ -299,6 +308,13 @@ for (my $i = 1; $i < (@lines-1); $i++) {
 		} else {
 			die 'ERROR: Illegal end to "Drop", "Remove" or "Delete" statement on line '.($i+1).".\n";
 		}
+	} elsif ($lines[$i] =~ /^Hand-over$/i) {
+		last;
+	} elsif ($lines[$i] =~ /^Output /i) {
+		$outputFormat = (split /^Output /, $lines[@lines-1])[1];
+		unless ($outputFormat eq 'tsv+header') {
+			die "ERROR: Specified output format not known on line ".($i+1).".\n";
+		}
 	} else {
 		die 'ERROR: Line '.($i+1).' did not match any expected expression (Reframe, Starting, Stopping, Skipping, Matching, Locating, Splitting, Capture).'."\n";
 	}
@@ -312,43 +328,46 @@ if (@fieldNames) {
 	}
 	chop $globalDeclarations;
 	$globalDeclarations .= ');
-my %fieldInitiations;
+my %chewFieldInitiations;
 foreach (@fieldNames) {
-	$fieldInitiations{$_} = 0;
+	$chewFieldInitiations{$_} = 0;
 }'."\n";
 } else {
 	die "ERROR: No valid data capture instructions found in script.\n";
 }
-my $outputStatement = 'my @outputLines;'."\n"
-		     .'my $outputRowCount = 0;'."\n"
-		     .'my $warnings = "";'."\n"
-		     .'foreach (@fieldNames) {'."\n"
-		     .'  if ( $fieldInitiations{$_} ) {'."\n"
-		     .'    if ( $outputRowCount != 0 && $outputRowCount != @{ $capturedData{$_} } ) {'."\n"
-		     .'      $warnings .='."\n"
-		     .'		   "WARNING: Output column \"$_\" has a different length than a previous column.\n";'."\n"
-		     .'    }'."\n"
-		     .'    if ( $outputRowCount < @{ $capturedData{$_} } ) {'."\n"
-		     .'      $outputRowCount = @{ $capturedData{$_} };'."\n"
-		     .'    }'."\n"
-		     .'  } else {'."\n"
-		     .'    $warnings .= "\nWARNING: Output column \"$_\" contains no data.\n";'."\n"
-		     .'  }'."\n"
-		     .'}'."\n"
-		     .'for (my $i = 0; $i < $outputRowCount; $i++) {'."\n"
-		     .$dropInsert
-		     .'	$outputLines[$i] = "";'."\n"
-		     .'	foreach (@fieldNames) {'."\n"
-		     .'		if ( defined( ${ $capturedData{$_} }[$i] ) ) {'."\n"
-		     .'			$outputLines[$i] .= ${ $capturedData{$_} }[$i];    }'."\n"
-		     .'		$outputLines[$i] .= "\t";'."\n"    #prevent column slippage by inserting tab even if no data captured for this col
-		     .$dropClosure
-		     .'} }'."\n"
-		     .'foreach (@fieldNames) { print "$_\t" }'."\n"
-		     .'print "\n";'."\n"
-		     .'foreach (@outputLines) { if ($_) { print "$_\n" } }'."\n"
-		     .'warn $warnings if $warnings;'."\n";
-my $output = $preamble1.$globalDeclarations.$preamble2.$bracketOpener.$stoppingStatement.$startingStatement.$skippingStatement.$closingBrackets.$outputStatement.$functionStr;
+my $outputPreparation = 'my $outputRowCount = 0;'."\n"
+		       .'my $chewWarnings = "";'."\n"
+		         .'foreach (@fieldNames) {'."\n"
+		       .'  if ( $chewFieldInitiations{$_} ) {'."\n"
+		       .'    if ( $outputRowCount != 0 && $outputRowCount != @{ $capturedData{$_} } ) {'."\n"
+		       .'      $chewWarnings .='."\n"
+		       .'		   "WARNING: Output column \"$_\" has a different length than a previous column.\n";'."\n"
+		       .'    }'."\n"
+		       .'    if ( $outputRowCount < @{ $capturedData{$_} } ) {'."\n"
+		       .'      $outputRowCount = @{ $capturedData{$_} };'."\n"
+		       .'    }'."\n"
+		       .'  } else {'."\n"
+		       .'    $chewWarnings .= "\nWARNING: Output column \"$_\" contains no data.\n";'."\n"
+		       .'  }'."\n"
+		       .'}'."\n";
+my $outputStatement = '';
+if ($outputFormat) {
+	$outputStatement =   'my @chewOutputLines;'."\n"
+			       .'for (my $i = 0; $i < $outputRowCount; $i++) {'."\n"
+			       .$dropInsert
+			       .'	$chewOutputLines[$i] = "";'."\n"
+			       .'	foreach (@fieldNames) {'."\n"
+			       .'		if ( defined( ${ $capturedData{$_} }[$i] ) ) {'."\n"
+			       .'			$chewOutputLines[$i] .= ${ $capturedData{$_} }[$i];    }'."\n"
+			       .'		$chewOutputLines[$i] .= "\t";'."\n"    #prevent column slippage by inserting tab even if no data captured for this col
+			       .$dropClosure
+			       .'} }'."\n"
+			       .'foreach (@fieldNames) { print "$_\t" }'."\n"
+			       .'print "\n";'."\n"
+			       .'foreach (@chewOutputLines) { if ($_) { print "$_\n" } }'."\n";
+}
+my $warnLine =	     'warn $chewWarnings if $chewWarnings;'."\n";
+my $output = $preamble1.$globalDeclarations.$preamble2.$bracketOpener.$stoppingStatement.$startingStatement.$skippingStatement.$closingBrackets.$outputPreparation.$outputStatement.$nonChewCode.$warnLine.$functionStr;
 
 dispatch($outputProgLang,$outputFormat,$output);
 
@@ -368,7 +387,7 @@ sub processSplit {
 	if ($$linep[$i] =~ /\/$/) {
 		my $regex = extractRegex('Splitting at',$$linep[$i]);
 		my $iterationChunk;
-		if ($cycleThrough eq 'lines') {
+		if ($cycleThrough eq 'chewLines') {
 			$iterationChunk = '$'.$curVName.'+'.$lineDeviation;
 		} else{
 			$iterationChunk = $lineDeviation;
@@ -410,7 +429,7 @@ sub processTakeChunk {
 		if ($$linep[$i] =~ /^\s*Take [0-9]+ as [A-Za-z][A-Za-z0-9]*$/) {
 			my @array = split /Take | as /, $$linep[$i];
 			checkInFieldname($fieldnamep,$array[2]);
-			$outputVal .= "\t\t".'$fieldInitiations{'.$array[2].'}++ if defined($array'.$splitNum.'['.$array[1].']);'."\n"
+			$outputVal .= "\t\t".'$chewFieldInitiations{'.$array[2].'}++ if defined($array'.$splitNum.'['.$array[1].']);'."\n"
 				     ."\t\t".'push @{ $capturedData{'.$array[2].'} }, $array'.$splitNum.'['.$array[1].'] if defined($array'.$splitNum.'['.$array[1].']);'."\n";
 		} elsif ($$linep[$i] =~ /^\s*Taking [0-9]+ as [A-Za-z][A-Za-z0-9]*$/) {
 			unless ( $$indentp[$i+1] == $$indentp[$i]+1
@@ -427,7 +446,7 @@ sub processTakeChunk {
 				$outputVal .= "\t\t\t".'$array'.$splitNum.'['.$array[1].'] =~ s'.$_."g;\n"; # NB substitution is currently global by default!
 			}
 			#TODO add condition, same as a little further above
-			$outputVal .= "\t\t".'$fieldInitiations{'.$array[2].'}++;'."\n"
+			$outputVal .= "\t\t".'$chewFieldInitiations{'.$array[2].'}++;'."\n"
 				     ."\t\t\t".'push @{ $capturedData{'.$array[2].'} }, $array'.$splitNum.'['.$array[1].'];'."\n\t\t}\n";
 		} elsif ($$linep[$i] =~ /^\s*Taking [0-9]+$/) {	    # TODO allow "At " as an alternative?
 			my $wantedLine = $$linep[$i];
@@ -443,9 +462,9 @@ sub processTakeChunk {
 			$findex =~ s/^\s*Follow //g;
 			my $condInsert = '';
 			my $iterInsert   = '';
-			if ($$linep[$i+1] =~ /^\s+Times [0-9]*$/) {   #TODO allow "Limit" as alternative
+			if ($$linep[$i+1] =~ /^\s+(Times|Limit) [0-9]*$/) {
 				my $times = $$linep[$i+1];
-				$times =~ s/^\s*Times //;
+				$times =~ s/^\s*(Times|Limit) //;
 				$i++;
 				$globalDeclarations .= 'my $followTimes = 0;'."\n";
 				$condInsert .= '$followTimes < '.$times.' && ';
@@ -453,11 +472,11 @@ sub processTakeChunk {
 			}
 			$outputVal .= "\t\t".'if ('.$condInsert.'defined($array'.$splitNum.'['.$findex.'])) {'."\n"
 				     .$iterInsert
-				     ."\t\t\t".'push @filelist, completeURL($array'.$splitNum.'['.$findex.'], $filelist[0]);'."\n"  #TODO eliminate need to assume that $filelist[0] is a proper URL
+				     ."\t\t\t".'push @fileList, completeURLchew($array'.$splitNum.'['.$findex.'], $fileList[0]);'."\n"  #TODO eliminate need to assume that $fileList[0] is a proper URL
 				     ."\t\t".'}'."\n";   # easier to read
 			unless ($completeURLFuncAdded) {
 				$functionStr .= 
-'sub completeURL {
+'sub completeURLchew {
 	if ($_[0] =~ /^\//) {
 		my @chars = split //, $_[1];
 		my $foundDoubles = 0;
@@ -500,7 +519,7 @@ sub processAtChunk {
 			for (my $j = $i+1; $j < @$linep; $j++) {
 				if ($$indentp[$j] > $$indentp[$i]) {
 					if ($$linep[$j] =~ /^\s*Splitting /) {
-						($splitNum, my $skipLines, my $startingAdd) = processSplit($fieldnamep,$j,$splitNum,\@lines,\@indentDepth,'lines',$lookWhere);
+						($splitNum, my $skipLines, my $startingAdd) = processSplit($fieldnamep,$j,$splitNum,\@lines,\@indentDepth,'chewLines',$lookWhere);
 						$outputVal .= $startingAdd;
 						$j += $skipLines;
 					}
@@ -518,16 +537,16 @@ sub processAtChunk {
 sub processReframe {
 	my $continue = $_[0];
 	my $regex = $_[1];
-	my $retStr = 'my @newlines;
-foreach my $line (@lines) {
+	my $retStr = 'my @chewNewLines;
+foreach my $line (@chewLines) {
 	$line =~ s'.$regex.'g;
 	my @array = split /\n/, $line;
-	push @newlines, @array;
+	push @chewNewLines, @array;
 }'."\n";
 	if ($continue) {
-		return $retStr.'@lines = @newlines;'."\n";
+		return $retStr.'@chewLines = @chewNewLines;'."\n";
 	} else {
-		return $retStr.'foreach (@newlines) { print $_."\n"; }'."\n";
+		return $retStr.'foreach (@chewNewLines) { print $_."\n"; }'."\n";
 	}
 }
 # AUXILIARY FUNCTIONS
