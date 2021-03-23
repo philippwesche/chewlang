@@ -45,9 +45,9 @@ for (my $i = 0; $i < @lines; $i++) {
 		splice @lines, $i, 1;
 		$i--;
 	}
-	#$lines[$i] =~ s/\s*\#[A-Za-z0-9\s\,\.\;\:\!\?\_\-\+\=\<\>\~\@\$\%\`\$\^\\]*$//; #comments
+	#$lines[$i] =~ s/\s*\#[A-Za-z0-9\s\,\.\;\:\!\?\_\-\+\=\<\>\~\@\$\%\`\$\^\\]*$//; # rm in-line comments
 	#TODO support slashes and quote marks in in-line comments; in-line comments disabled until full support
-	$lines[$i] =~ s/\s*$//;	#trailing white space
+	$lines[$i] =~ s/\s*$// unless $lines[$i] =~ /^\s*Replace with /;	# rm trailing white space
 }
 
 my $preamble1 = "use strict;use warnings;use sigtrap;\n"
@@ -60,8 +60,7 @@ my $stoppingStatement = '';
 my $skippingStatement = '';
 my $dropInsert = '';
 my $dropClosure = '';
-my $functionStr = '';
-my $completeURLFuncAdded = 0;
+my $funcStr = '';
 my $nonChewCode = '';
 my $closingBrackets = "}\n";
 my $outputFormat;
@@ -78,10 +77,13 @@ if ($lines[0] =~ /^Reading /) {
 			     .'$chewBrowser->agent("Mozilla/5.0");'."\n";
 		$preamble2 .= 'my @fileList = ('.$fileStr.');'."\n"
 			     .'for (my $fi = 0; $fi < @fileList; $fi++) {'."\n"
-			     .'my $chewRes = $chewBrowser->get($fileList[$fi]);'."\n"
-			     .'die "ERROR at $fileList[$fi]\n", $chewRes->status_line, "\n Aborting\n" unless $chewRes->is_success;'."\n"
-			     .'my @chewLines = split /\n/, $chewRes->decoded_content;'."\n"
+			     .'my @chewLines = chewURLlines($chewBrowser,$fileList[$fi]);'."\n"
 		             .'die "Could not fetch $fileList[$fi]\n" unless @chewLines;'."\n";
+		$funcStr   .= 'sub chewURLlines {'."\n"
+			     ."\t".'my $res = $_[0]->get($_[1]);'."\n"
+			     ."\t".'die "ERROR at $_[1]\n", $res->status_line, "\n Aborting\n" unless $res->is_success;'."\n"
+			     ."\t".'return (split (/\n/, $res->decoded_content));'."\n"
+			     .'}'."\n";
 	} else {
 		$preamble2 .= 'my @fileList = ('.$fileStr.');'."\n"
 			     .'for (my $fi = 0; $fi < @fileList; $fi++) {'."\n"
@@ -109,7 +111,15 @@ if ($lines[@lines-1] =~ /^Reframe \//) {
 }
 
 #checking output conditions are defined
-unless ($lines[@lines-1] =~ /^Output /) {
+#TODO enable and allow multiple outputs
+if ($lines[@lines-1] =~ /^Output /) {
+	for (my $i = 1; $i < @lines; $i++) {
+		if ($lines[$i] =~ /^Outputting /) {
+			die 'ERROR: Both Output and Outputting specified. Unclear what you want.'."\n";
+		}
+	}
+} elsif ($lines[@lines-2] =~ /^Outputting /) {
+} else {
 	for (my $i = 1; $i < @lines; $i++) {
 		if ($lines[$i] =~ /^Hand-over$/i) {
 			$nonChewCode = join ("\n", @lines[($i+1)..(@lines-1)]);
@@ -311,30 +321,54 @@ for (my $i = 1; $i < @lines; $i++) {
 	} elsif ($lines[$i] =~ /^Hand-over$/i) {
 		last;
 	} elsif ($lines[$i] =~ /^Output /i) {
-		$outputFormat = (split /^Output /, $lines[@lines-1])[1];
+		$outputFormat = (split /^Output /, $lines[$i])[1];
 		unless ($outputFormat eq 'tsv+header') {
 			die "ERROR: Specified output format not known on line ".($i+1).".\n";
+		}
+		$globalDeclarations .= 'my @fieldNames = (';
+		if (@fieldNames) {
+			foreach (@fieldNames) {
+				$globalDeclarations .= '"'.$_.'",';
+			}
+			chop $globalDeclarations;
+			$globalDeclarations .= ');'."\n".'my %chewFieldInitiations;'."\n".'foreach (@fieldNames) { $chewFieldInitiations{$_} = 0; }'."\n";
+		} else {
+			die "ERROR: No valid data capture instructions found in script.\n";
+		}
+	} elsif ($lines[$i] =~ /^Outputting /i) {
+		$outputFormat = (split /^Outputting /, $lines[$i])[1];
+		unless ($outputFormat eq 'tsv+header') {
+			die "ERROR: Specified output format not known on line ".($i+1).".\n";
+		}
+		if ($i < (@lines-1)) {
+			if ($lines[$i+1] =~ /^\s*Order /) {
+				my $orderline = $lines[$i+1];
+				$orderline =~ s/^\s*Order //;
+				my @order = split /\s*\,\s*/, $orderline;
+KAYA:				for (my $kaya = 0; $kaya < @fieldNames; $kaya++) {
+					for (my $jayden = 0; $jayden < @order; $jayden++) {
+						if ($order[$jayden] eq $fieldNames[$kaya]) {
+							next KAYA;
+						}
+						if ($jayden == @order-1) {
+							die 'ERROR: "Order" statement on line '.($i+2).' does not match the list of names of captured fields. Should contain same items in any order: '."@fieldNames\n";
+						}
+					}
+				}
+				$globalDeclarations .= 'my @fieldNames = (\''. join ("','",@order) .'\');'."\n"
+						      .'my %chewFieldInitiations;'."\n".'foreach (@fieldNames) { $chewFieldInitiations{$_} = 0; }'."\n";
+				$i++;
+			} else {
+				die 'ERROR: "Outputting" must be followed by "Order" on line '.($i+2).".\n";
+			}
+		} else {
+			die 'ERROR: Premature end of file. "Outputting" must be followed by "Order".'."\n";
 		}
 	} else {
 		die 'ERROR: Line '.($i+1).' did not match any expected expression (Reframe, Starting, Stopping, Skipping, Matching, Locating, Splitting, Capture).'."\n";
 	}
 }
-
 # CONSTRUCTING OUTPUT
-$globalDeclarations .= 'my @fieldNames = (';
-if (@fieldNames) {
-	foreach (@fieldNames) {
-		$globalDeclarations .= '"'.$_.'",';
-	}
-	chop $globalDeclarations;
-	$globalDeclarations .= ');
-my %chewFieldInitiations;
-foreach (@fieldNames) {
-	$chewFieldInitiations{$_} = 0;
-}'."\n";
-} else {
-	die "ERROR: No valid data capture instructions found in script.\n";
-}
 my $outputPreparation = 'my $outputRowCount = 0;'."\n"
 		       .'my $chewWarnings = "";'."\n"
 		         .'foreach (@fieldNames) {'."\n"
@@ -367,7 +401,38 @@ if ($outputFormat) {
 			       .'foreach (@chewOutputLines) { if ($_) { print "$_\n" } }'."\n";
 }
 my $warnLine =	     'warn $chewWarnings if $chewWarnings;'."\n";
-my $output = $preamble1.$globalDeclarations.$preamble2.$bracketOpener.$stoppingStatement.$startingStatement.$skippingStatement.$closingBrackets.$outputPreparation.$outputStatement.$nonChewCode.$warnLine.$functionStr;
+my $output = $preamble1.$globalDeclarations.$preamble2.$bracketOpener.$stoppingStatement.$startingStatement.$skippingStatement.$closingBrackets.$outputPreparation.$outputStatement.$nonChewCode.$warnLine.$funcStr;
+
+# adding required subroutines
+if ($output =~ /completeURLchew/) {
+	$output .= "\n".
+'sub completeURLchew {
+	if ($_[0] =~ /^https?\:\/\//) {
+		return $_[0];
+	} elsif ($_[0] =~ /^\//) {
+		my @chars = split //, $_[1];
+		my $foundDoubles = 0;
+		for (my $i = 1; $i < @chars; $i++) {
+			if (!$foundDoubles) {
+				if ($chars[$i-1] eq "/" && $chars[$i] eq "/") {
+					$foundDoubles = 1;
+				}
+			} else {
+				if ($chars[$i] eq "/") {
+					my $server = join "", @chars[0..($i-1)];
+					return $server.$_[0];
+				}
+			}
+		}
+	} elsif ($_[0] =~ /^\.\./) {
+	} elsif ($_[0] =~ /^\./) {
+	} else {
+		my $originalURL = $_[1];
+		$originalURL =~ s/(^\/)*$//;
+		return ($originalURL.$_[0]);
+	}
+}'."\n";		#TODO add support for relative URLs starting with dots
+}
 
 dispatch($outputProgLang,$outputFormat,$output);
 
@@ -408,11 +473,30 @@ sub processCleanChunk {
 	my @cleanExpressions;
 	my $chunkLength = 0;
 	for (my $i = $startLine; $i < @$linep; $i++) {
-		if ($$linep[$i] =~ /^\s+Clean \// && $$linep[$i] =~ /\/$/) {
+		# TODO Clean(ing) needs malformatting error msg
+		if      ($$linep[$i] =~ /^\s*Cleaning (up )?\// && $$linep[$i] =~ /\/$/) {
 			$chunkLength++;
 			my $cleanStatement = $$linep[$i];
-			$cleanStatement =~ s/^\s+Clean //;
-			#TODO make it safer
+			$cleanStatement =~ s/^\s+Cleaning (up )?//;
+			if ($$linep[$i+1] =~ /^\s+Replace with /) {
+				my $replacement = $$linep[$i+1];
+				$replacement =~ s/^\s+Replace with //;
+				if ($replacement =~ /^\'/ && $replacement =~ /\'\s*$/) { #TODO count quote marks and warn if != 2
+					$replacement =~ s/^\'//;
+					$replacement =~ s/\'\s*$//;
+				}
+				$cleanStatement .= $replacement.'/';
+				$chunkLength++;
+				$i++;
+			} else {
+				die 'ERROR: "Cleaning" must be followed by "Replace" on line'.($i+2).".\n";
+			}
+			push @cleanExpressions, $cleanStatement;
+		} elsif ($$linep[$i] =~ /^\s+Clean (up )?\// && $$linep[$i] =~ /\/$/) {
+			$chunkLength++;
+			my $cleanStatement = $$linep[$i];
+			$cleanStatement =~ s/^\s+Clean (up )?//;
+			$cleanStatement .= '/';
 			push @cleanExpressions, $cleanStatement;
 		} else {
 			return ($chunkLength, @cleanExpressions);
@@ -433,9 +517,9 @@ sub processTakeChunk {
 				     ."\t\t".'push @{ $capturedData{'.$array[2].'} }, $array'.$splitNum.'['.$array[1].'] if defined($array'.$splitNum.'['.$array[1].']);'."\n";
 		} elsif ($$linep[$i] =~ /^\s*Taking [0-9]+ as [A-Za-z][A-Za-z0-9]*$/) {
 			unless ( $$indentp[$i+1] == $$indentp[$i]+1
-			      && $$linep[$i+1]   =~ /^\s+Clean \//
+			      && $$linep[$i+1]   =~ /^\s+Clean(ing)? (up)? \//
 			      && $$linep[$i+1]   =~ /\/$/            ) {
-				die 'ERROR: "Taking [...] as" on line '.$i.' must be "Take" or followed by "Clean" statement.'."\n";
+				die 'ERROR: "Taking [...] as" on line '.$i.' must be "Take" or followed by "Clean up" statement.'."\n";
 			}
 			my @array = split /Taking | as /, $$linep[$i];
 			checkInFieldname($fieldnamep,$array[2]);
@@ -474,30 +558,6 @@ sub processTakeChunk {
 				     .$iterInsert
 				     ."\t\t\t".'push @fileList, completeURLchew($array'.$splitNum.'['.$findex.'], $fileList[0]);'."\n"  #TODO eliminate need to assume that $fileList[0] is a proper URL
 				     ."\t\t".'}'."\n";   # easier to read
-			unless ($completeURLFuncAdded) {
-				$functionStr .= 
-'sub completeURLchew {
-	if ($_[0] =~ /^\//) {
-		my @chars = split //, $_[1];
-		my $foundDoubles = 0;
-		for (my $i = 1; $i < @chars; $i++) {
-			if (!$foundDoubles) {
-				if ($chars[$i-1] eq "/" && $chars[$i] eq "/") {
-					$foundDoubles = 1;
-				}
-			} else {
-				if ($chars[$i] eq "/") {
-					my $server = join "", @chars[0..($i-1)];
-					return $server.$_[0];
-				}
-			}
-		}
-	} else {
-		return $_[0];
-	}
-}';			#TODO add support for relative URLs not starting with a slash
-			}
-			$completeURLFuncAdded = 1;
 		} else {
 			die 'ERROR: Correctly formatted Take statement expected on line '.($i+1).", found: $$linep[$i].\n";
 		}
@@ -579,7 +639,6 @@ sub sanitiseRegex {	# makes sure there are no single / in the middle of a regex 
 	}
 	return (join ('', @chars));
 }
-
 sub expandToPerlFilelistStringRecur {
 	my @tempArray;
 	my @subparts = split /\.\./, $_[0];
@@ -609,7 +668,6 @@ sub expandToPerlFilelistStringRecur {
 		return @tempArray;
 	}
 }
-
 sub expandToPerlFilelistString {
 	my @variablePartsArray;
 	if ($_[0] =~ /\{\{[0-9]+\.\.[0-9]+\}\}/) {
@@ -627,7 +685,6 @@ sub expandToPerlFilelistString {
 		return "'".$_[0]."'";
 	}
 }
-
 sub checkInFieldname {
 	my ($fieldnamep,$value) = @_;
 	foreach (@$fieldnamep) {
