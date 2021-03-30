@@ -203,7 +203,7 @@ for (my $i = 1; $i < @lines; $i++) {
 #pre-processing for equivalence
 for (my $i = 1; $i < (@lines-1); $i++) {
 	if ($lines[$i] =~ /^\s*Matching \//) {
-		die 'ERROR: Illegal end to "Matching" statement on line '.($i+1).", found: $lines[$i].\n" unless ($lines[$i] =~ /\/$/) {
+		die 'ERROR: Illegal end to "Matching" statement on line '.($i+1).", found: $lines[$i]\n" unless ($lines[$i] =~ /\/$/) {
 		$lines[$i] =~ s/Matching/Locating around/;
 		for (my $j = $i+1; $j < (@lines-1); $j++) {
 			if ($indentDepth[$j] > $indentDepth[$i]) {
@@ -273,15 +273,15 @@ for (my $i = 1; $i < @lines; $i++) {
 			my @array1 = split /Capture \//, $lines[$i];
 			my @array2 = split /\/ as /, $array1[1];
 			my $regex = join '/ as ', @array2[0..(@array2-2)];
+			die 'ERROR: Empty "Capture" search expression on line '.($i+1).".\n" unless $regex;
 			$regex = sanitiseRegex($regex);
 			checkInFieldname( \@fieldNames, $array2[$#array2] );
 			$startingStatement .= "\t".'if ($chewLines[$'.$curVName.'] =~ /'.$regex.'/) {'."\n"
-			#TODO add condition, same as elsewhere
 					     ."\t\t".'$chewFieldInitiations{'.$array2[$#array2].'}++;'."\n"
 					     ."\t\t".'push @{ $capturedData{'.$array2[$#array2].'} }, substr($chewLines[$'.$curVName.'], $-[0], $+[0] - $-[0]);'."\n\t\t".'# Note about the above: the expression contained in substr()'."\n\t\t".'# is some slightly obscure Perl magic that refers to the last-matched string'."\n"
 					     ."\t}\n";
 		} else {
-			die 'ERROR: Illegal end to "Capture" statement on line '.($i+1).".\n";
+			die 'ERROR: Illegal end to "Capture" statement on line '.($i+1).", found: $lines[$i]\n";
 		}
 	} elsif ($lines[$i] =~ /^\s*Splitting at \//) {
 		($splitNum, my $skipLines, my $startingAdd) = processSplit(\@fieldNames, $i, $splitNum, \@lines, \@indentDepth, 'chewLines', 0);
@@ -530,8 +530,7 @@ sub processTakeChunk {
 			foreach (@cleanLines) {
 				$outputVal .= "\t\t\t".'$array'.$splitNum.'['.$array[1].'] =~ s'.$_."g;\n"; # NB substitution is currently global by default!
 			}
-			#TODO add condition, same as a little further above
-			$outputVal .= "\t\t".'$chewFieldInitiations{'.$array[2].'}++;'."\n"
+			$outputVal .= "\t\t\t".'$chewFieldInitiations{'.$array[2].'}++;'."\n"
 				     ."\t\t\t".'push @{ $capturedData{'.$array[2].'} }, $array'.$splitNum.'['.$array[1].'];'."\n\t\t}\n";
 		} elsif ($$linep[$i] =~ /^\s*Taking [0-9]+$/) {	    # TODO allow "At " as an alternative?
 			my $wantedLine = $$linep[$i];
@@ -560,7 +559,7 @@ sub processTakeChunk {
 				     ."\t\t\t".'push @fileList, completeURLchew($array'.$splitNum.'['.$findex.'], $fileList[0]);'."\n"  #TODO eliminate need to assume that $fileList[0] is a proper URL
 				     ."\t\t".'}'."\n";   # easier to read
 		} else {
-			die 'ERROR: Correctly formatted Take statement expected on line '.($i+1).", found: $$linep[$i].\n";
+			die 'ERROR: Correctly formatted Take statement expected on line '.($i+1).", found: $$linep[$i]\n";
 		}
 	}
 	return ($splitNum, $outputVal, $chunkLength);
