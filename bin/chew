@@ -201,9 +201,9 @@ for (my $i = 1; $i < @lines; $i++) {
 }
 
 #pre-processing for equivalence
-#TODO bring back formatting error msgs for Matching
 for (my $i = 1; $i < (@lines-1); $i++) {
 	if ($lines[$i] =~ /^\s*Matching \//) {
+		die 'ERROR: Illegal end to "Matching" statement on line '.($i+1).".\n" unless ($lines[$i] =~ /\/$/) {
 		$lines[$i] =~ s/Matching/Locating around/;
 		for (my $j = $i+1; $j < (@lines-1); $j++) {
 			if ($indentDepth[$j] > $indentDepth[$i]) {
