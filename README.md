@@ -27,6 +27,9 @@ Commands with global effect are specified without indent (currently Reading, Sta
 ## Variable naming
 While Chew is very permissive with respect to variable naming, it's recommended to use variable names that are generally considered sensible, so CamelCase or underscore\_joined, starting with English alphabet letters and optionally containing numbers. Following this practice will pretty much guarantee that your variable naming is future proof.
 
+## Prepositions make it feel much like normal English
+"Pure Chew" uses prepositions where needed to allow the syntax to be as self-explanatory as possible. This is subject to ongoing development and experimentation, but the specific prepositions and their use are anticipated to be future-proof within Chew.
+
 # Syntax
 ## Obligatory statements
 ### Reading input
