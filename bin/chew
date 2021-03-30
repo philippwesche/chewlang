@@ -203,7 +203,7 @@ for (my $i = 1; $i < @lines; $i++) {
 #pre-processing for equivalence
 for (my $i = 1; $i < (@lines-1); $i++) {
 	if ($lines[$i] =~ /^\s*Matching \//) {
-		die 'ERROR: Illegal end to "Matching" statement on line '.($i+1).".\n" unless ($lines[$i] =~ /\/$/) {
+		die 'ERROR: Illegal end to "Matching" statement on line '.($i+1).", found: $lines[$i].\n" unless ($lines[$i] =~ /\/$/) {
 		$lines[$i] =~ s/Matching/Locating around/;
 		for (my $j = $i+1; $j < (@lines-1); $j++) {
 			if ($indentDepth[$j] > $indentDepth[$i]) {
@@ -268,7 +268,7 @@ for (my $i = 1; $i < @lines; $i++) {
 		} else {
 			die 'ERROR: Illegal end to "Skipping" statement on line '.($i+1).".\n";
 		}
-	} elsif ($lines[$i] =~ /^\s*Capture \//) {	#TODO switch to using Take instead of Capture?
+	} elsif ($lines[$i] =~ /^\s*Capture \//) {
 		if ($lines[$i] =~ /\/ as [A-Za-z][A-Za-z0-9]*$/) {
 			my @array1 = split /Capture \//, $lines[$i];
 			my @array2 = split /\/ as /, $array1[1];
@@ -473,8 +473,8 @@ sub processCleanChunk {
 	my @cleanExpressions;
 	my $chunkLength = 0;
 	for (my $i = $startLine; $i < @$linep; $i++) {
-		# TODO Clean(ing) needs malformatting error msg
-		if      ($$linep[$i] =~ /^\s*Cleaning (up )?\// && $$linep[$i] =~ /\/$/) {
+		if      ($$linep[$i] =~ /^\s*Cleaning (up )?\//) {
+			die 'ERROR: Illegal end to "Cleaning" statement on line '.($i+1).", found: $$linep[$i]\n" unless $$linep[$i] =~ /\/$/;
 			$chunkLength++;
 			my $cleanStatement = $$linep[$i];
 			$cleanStatement =~ s/^\s+Cleaning (up )?//;
@@ -492,7 +492,8 @@ sub processCleanChunk {
 				die 'ERROR: "Cleaning" must be followed by "Replace" on line'.($i+2).".\n";
 			}
 			push @cleanExpressions, $cleanStatement;
-		} elsif ($$linep[$i] =~ /^\s+Clean (up )?\// && $$linep[$i] =~ /\/$/) {
+		} elsif ($$linep[$i] =~ /^\s+Clean (up )?\//) {
+			die 'ERROR: Illegal end to "Clean" statement on line '.($i+1).", found: $$linep[$i]\n" unless $$linep[$i] =~ /\/$/;
 			$chunkLength++;
 			my $cleanStatement = $$linep[$i];
 			$cleanStatement =~ s/^\s+Clean (up )?//;
