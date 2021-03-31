@@ -27,9 +27,6 @@ Commands with global effect are specified without indent (currently Reading, Sta
 ## Variable naming
 While Chew is very permissive with respect to variable naming, it's recommended to use variable names that are generally considered sensible, so CamelCase or underscore\_joined, starting with English alphabet letters and optionally containing numbers. Following this practice will pretty much guarantee that your variable naming is future proof.
 
-## Prepositions make it feel much like normal English
-"Pure Chew" uses prepositions where needed to allow the syntax to be as self-explanatory as possible. This is subject to ongoing development and experimentation, but the specific prepositions and their use are anticipated to be future-proof within Chew.
-
 # Syntax
 ## Obligatory statements
 ### Reading input
@@ -67,6 +64,10 @@ The locating context allows accessing the lines around a matching line. It is si
 
 * At *number*
   * Selects a line for further processing relative to the origin. "At 0" is the same line as the origin; negative numbers can be used to select lines before the origin, positive numbers after it. "At *number*" in itself does nothing. It requires further statements such as Splitting, to determine the action to be taken.
+
+## Matching a pattern
+* Capture /*expression*/ as *outputname*
+  * Rather than relying on a segmentation of the source document, Capture directly catches a part of the document that conforms to the pattern defined in *expression*. As a current limitation, it only catches the first match on any given line.
 
 ## Coping with bad input
 As HTML in particular is predominantly line break agnostic, some websites are delivered as a single line of code. We can remedy this via:
