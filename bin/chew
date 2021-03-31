@@ -269,6 +269,10 @@ for (my $i = 1; $i < @lines; $i++) {
 			die 'ERROR: Illegal end to "Skipping" statement on line '.($i+1).".\n";
 		}
 	} elsif ($lines[$i] =~ /^\s*Capture \//) {
+		#TODO Capture needs Clean
+		#TODO make it capture all matching strings on a given line, not just the first one
+		#     then offer the option to catch only one, or otherwise limit catching (e.g. once per page)
+		#TODO also offer Capture as an option within Split and Locating contexts (just like Cutting)
 		if ($lines[$i] =~ /\/ as [A-Za-z][A-Za-z0-9]*$/) {
 			my @array1 = split /Capture \//, $lines[$i];
 			my @array2 = split /\/ as /, $array1[1];
@@ -558,6 +562,7 @@ sub processTakeChunk {
 				     .$iterInsert
 				     ."\t\t\t".'push @fileList, completeURLchew($array'.$splitNum.'['.$findex.'], $fileList[0]);'."\n"  #TODO eliminate need to assume that $fileList[0] is a proper URL
 				     ."\t\t".'}'."\n";   # easier to read
+		# TODO implement Cutting
 		} else {
 			die 'ERROR: Correctly formatted Take statement expected on line '.($i+1).", found: $$linep[$i]\n";
 		}
@@ -583,6 +588,7 @@ sub processAtChunk {
 						$outputVal .= $startingAdd;
 						$j += $skipLines;
 					}
+				# TODO implement Cutting
 				} else {
 					$i = $j - 1;
 					last;
