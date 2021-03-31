@@ -1,4 +1,4 @@
-**Chew** or **chewlang** is intended to be a high-level programming language and code generator with heavy emphasis on regular expressions and anticipated use in data scraping.
+**Chew** or **chewlang** is a high-level programming language and code generator with heavy emphasis on regular expressions and anticipated use in data scraping.
 
 It currently compiles down to Perl5.
 
