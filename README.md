@@ -1,6 +1,6 @@
-**Chew** or **chewlang** is a high-level data science language and code generator with heavy emphasis on regular expressions and anticipated use in data scraping.
+**Chew** or **chewlang** is a high-level data science language and code generator with heavy emphasis on regular expressions. The current focus of development is data scraping.
 
-It currently compiles down to Perl5.
+It currently compiles down to Perl 5.
 
 Design priorities:
 * Short, readable code
