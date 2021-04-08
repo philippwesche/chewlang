@@ -15,7 +15,7 @@ A quick live demo can be found at http://chewlang.com
 # Dependencies
 * Perl 5 (earlier versions untested)
 * Getopt::Long
-* LWP >=5.64 (if reading from http(s))
+* LWP >=5.64
 
 # Syntax principles
 ## Gerund sets up a context

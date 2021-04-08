@@ -51,7 +51,8 @@ for (my $i = 0; $i < @lines; $i++) {
 }
 
 my $preamble1 = "use strict;use warnings;use sigtrap;\n"
-	       .'use open ":std", ":encoding(UTF-8)";'."\n";
+	       .'use open ":std", ":encoding(UTF-8)";'."\n"
+	       .'use LWP 5.64;'."\n";
 my $globalDeclarations .= 'my %capturedData;'."\n";
 my $preamble2 = '';
 my $bracketOpener = '';
@@ -60,7 +61,11 @@ my $stoppingStatement = '';
 my $skippingStatement = '';
 my $dropInsert = '';
 my $dropClosure = '';
-my $funcStr = '';
+my $funcStr    = 'sub chewURLlines {'."\n"	#TODO needs-based inclusion instead - NB Dipping into!
+	        ."\t".'my $res = $_[0]->get($_[1]);'."\n"
+	        ."\t".'die "ERROR at $_[1]\n", $res->status_line, "\n Aborting\n" unless $res->is_success;'."\n"
+	        ."\t".'return (split (/\n/, $res->decoded_content));'."\n"
+	        .'}'."\n";
 my $nonChewCode = '';
 my $closingBrackets = "}\n";
 my $outputFormat;
@@ -72,18 +77,12 @@ if ($lines[0] =~ /^Reading /) {
 	$url =~ s/^Reading //;
 	my $fileStr = expandToPerlFilelistString($url);
 	if ($lines[0] =~ /^Reading https?\:\/\//) {
-		$preamble1 .= 'use LWP 5.64;'."\n"
-			     .'my $chewBrowser = LWP::UserAgent->new;'."\n"
+		$preamble1 .= 'my $chewBrowser = LWP::UserAgent->new;'."\n"
 			     .'$chewBrowser->agent("Mozilla/5.0");'."\n";
 		$preamble2 .= 'my @fileList = ('.$fileStr.');'."\n"
 			     .'for (my $fi = 0; $fi < @fileList; $fi++) {'."\n"
 			     .'my @chewLines = chewURLlines($chewBrowser,$fileList[$fi]);'."\n"
 		             .'die "Could not fetch $fileList[$fi]\n" unless @chewLines;'."\n";
-		$funcStr   .= 'sub chewURLlines {'."\n"
-			     ."\t".'my $res = $_[0]->get($_[1]);'."\n"
-			     ."\t".'die "ERROR at $_[1]\n", $res->status_line, "\n Aborting\n" unless $res->is_success;'."\n"
-			     ."\t".'return (split (/\n/, $res->decoded_content));'."\n"
-			     .'}'."\n";
 	} else {
 		$preamble2 .= 'my @fileList = ('.$fileStr.');'."\n"
 			     .'for (my $fi = 0; $fi < @fileList; $fi++) {'."\n"
@@ -93,6 +92,7 @@ if ($lines[0] =~ /^Reading /) {
 } else {
 	die 'ERROR: No "Reading" instruction found in first line.'."\n";
 }
+#TODO allow reading from multiple ranges and multiple files not in a range
 
 #special early exit if reframe is the last command in the file
 if ($lines[@lines-1] =~ /^Reframe \//) {
@@ -119,6 +119,7 @@ if ($lines[@lines-1] =~ /^Output /) {
 		}
 	}
 } elsif ($lines[@lines-2] =~ /^Outputting /) {
+} elsif ($lines[@lines-1] =~ /^\s*Locating /) {
 } else {
 	for (my $i = 1; $i < @lines; $i++) {
 		if ($lines[$i] =~ /^Hand-over$/i) {
@@ -133,7 +134,6 @@ if ($lines[@lines-1] =~ /^Output /) {
 }
 
 my $curVName = $vNames[$vindex];
-$vindex++;
 my $splitNum = 0;
 $preamble2 .=	   'my $processing = 0;'      ."\n";
 $bracketOpener .=  'for (my $'.$curVName.' = 0; $'.$curVName.' < @chewLines; $'.$curVName.'++) {'."\n";
@@ -221,7 +221,7 @@ for (my $i = 1; $i < (@lines-1); $i++) {
 	}
 }
 #main processing
-mainProcessing(\@fieldNames, 1, \@lines, \@indentDepth, 0, $curVName,
+mainProcessing(\@fieldNames, 1, \@lines, \@indentDepth, 0, \@vNames, $vindex,
 	\$startingStatement, \$stoppingStatement, \$preamble2, \$dropInsert, \$dropClosure, \$globalDeclarations, \$closingBrackets, \$outputFormat);
 # CONSTRUCTING OUTPUT
 my $outputPreparation = 'my $outputRowCount = 0;'."\n"
@@ -302,9 +302,9 @@ sub dispatch {
 }
 # PARSING FUNCTIONS
 sub mainProcessing {
-	my ($fieldnamep, $startLine, $linep, $indentp, $recursive, $curVName,
+	my ($fieldnamep, $startLine, $linep, $indentp, $recursive, $vnamesp, $vindex,
 	  $startingStatement,  $stoppingStatement,  $preamble2,  $dropInsert,  $dropClosure,  $globalDeclarations,  $closingBrackets,  $outputFormat) = @_;
-	#TODO $curVName may need to be incremented on recursion
+	my $curVName = $$vnamesp[++$vindex];
 	my $hasStartStatement = 0;
 	my $mainIndent = $$indentp[$startLine];
 	for (my $i = $startLine; $i < @$linep; $i++) {
@@ -377,19 +377,25 @@ sub mainProcessing {
 				die 'ERROR: Illegal end to "Capture" statement on line '.($i+1).", found: $$linep[$i]\n";
 			}
 		} elsif ($$linep[$i] =~ /^\s*Splitting at \//) {
-			($splitNum, my $skipLines, my $startingAdd) = processSplit(\@fieldNames, $i, $splitNum, $linep, $indentp, 'chewLines', 0);
+			($splitNum, my $skipLines, my $startingAdd) = processSplit(\@fieldNames, $i, $splitNum, $linep, $indentp, 'chewLines', 0, $vnamesp, $vindex);
 			$$startingStatement .= $startingAdd;
 			$i += $skipLines;
 		} elsif ($$linep[$i] =~ /^\s*(Locating|Looking) around \//) {
 			if ($$linep[$i] =~ /\/$/) {
 				my $regex = extractRegex('(Locating|Looking) around', $$linep[$i]);
 				$$startingStatement .= "\t".'if ($chewLines[$'.$curVName.'] =~ /'.$regex.'/) {'."\n";
-				my $masterIndent = $$indentp[$i];
-				my $atChunkPerlCode;
-				if ($i < (@$linep-1) ) {
+				if ($i == (@$linep-1)) {	# early, "interactive" exit
+					my $shortLine = $$linep[$i];
+					$shortLine =~ s/^\s+//;
+					$$startingStatement .= 'print "Your statement \''.$shortLine.'\' sets up this context for adding \'At\' statements:\n";'."\n"
+							       ."\t\t".'for (my $itera = -5; $itera < 11; $itera++) { print "$itera\t$chewLines[$'.$curVName.'+$itera]\n"; } exit; }'."\n";
+					prepFieldNamesAndInitiations($globalDeclarations,\@fieldNames);
+				} else {
+					my $masterIndent = $$indentp[$i];
+					my $atChunkPerlCode;
 					for (my $j = $i+1; $j < @$linep; $j++) {
 						if ($$indentp[$j] <= $masterIndent) {
-							($atChunkPerlCode, $splitNum) = processAtChunk(\@fieldNames, ($i+1), $splitNum, $curVName, $linep, $indentp);
+							($atChunkPerlCode, $splitNum) = processAtChunk(\@fieldNames, ($i+1), $splitNum, $curVName, $linep, $indentp,$vnamesp,$vindex);
 							$$startingStatement .= $atChunkPerlCode.'}';
 							$i = $j-1;
 							last;
@@ -418,16 +424,7 @@ sub mainProcessing {
 			unless ($$outputFormat eq 'tsv+header') {
 				die "ERROR: Specified output format not known on line ".($i+1).".\n";
 			}
-			$$globalDeclarations .= 'my @fieldNames = (';
-			if (@fieldNames) {
-				foreach (@fieldNames) {
-					$$globalDeclarations .= '"'.$_.'",';
-				}
-				chop $$globalDeclarations;
-				$$globalDeclarations .= ');'."\n".'my %chewFieldInitiations;'."\n".'foreach (@fieldNames) { $chewFieldInitiations{$_} = 0; }'."\n";
-			} else {
-				die "ERROR: No valid data capture instructions found in script.\n";
-			}
+			prepFieldNamesAndInitiations($globalDeclarations,\@fieldNames);
 		} elsif ($$linep[$i] =~ /^Outputting /i) {
 			$$outputFormat = (split /^Outputting /, $$linep[$i])[1];
 			unless ($$outputFormat eq 'tsv+header') {
@@ -463,7 +460,7 @@ KAYA:					for (my $kaya = 0; $kaya < @fieldNames; $kaya++) {
 	}
 }
 sub processSplit {
-	my ($fieldnamep, $i, $splitNum, $linep, $indentp, $cycleThrough, $lineDeviation) = @_;
+	my ($fieldnamep, $i, $splitNum, $linep, $indentp, $cycleThrough, $lineDeviation, $vnamesp, $vindex) = @_;
 	my $startingAdd = '';
 	if ($$linep[$i] =~ /\/$/) {
 		my $regex = extractRegex('Splitting at',$$linep[$i]);
@@ -477,7 +474,7 @@ sub processSplit {
 		#TODO consider catching the warning and passing it on to the user rather than using plain exists() - user might want to know capture failed here
 		$startingAdd .= "\t".'if (exists($'.$cycleThrough.'['.$iterationChunk.']) && $'.$cycleThrough.'['.$iterationChunk.'] =~ /'.$regex.'/) {'."\n"
 			       ."\t\t".'my @array'.$splitNum.' = split /'.$regex.'/, $'.$cycleThrough.'['.$iterationChunk.'];'."\n";
-		($splitNum, my $takeChunkPerlCode, my $skipLines) = processTakeChunk($fieldnamep,($i+1), $splitNum, $linep, $indentp);
+		($splitNum, my $takeChunkPerlCode, my $skipLines) = processTakeChunk($fieldnamep,($i+1), $splitNum, $linep, $indentp, $vnamesp, $vindex);
 		$startingAdd .= $takeChunkPerlCode."\t}\n";
 		return($splitNum,$skipLines,$startingAdd);
 	} else {
@@ -521,12 +518,13 @@ sub processCleanChunk {
 	}
 }
 sub processTakeChunk {
-	my ($fieldnamep,$startLine,$splitNum,$linep,$indentp) = @_;
+	my ($fieldnamep,$startLine,$splitNum,$linep,$indentp,$vnamesp,$vindex) = @_;
 	my $outputVal = '';
 	my $chunkLength = 0;
 	for (my $i = $startLine; $i < @$linep; $i++) {
 		last if ($$indentp[$i] < $$indentp[$startLine]);
 		$chunkLength++;
+		#TODO sensible warnings about multi-take on the same fieldname (but allow it)
 		if ($$linep[$i] =~ /^\s*Take [0-9]+ as [A-Za-z][A-Za-z0-9]*$/) {
 			my @array = split /Take | as /, $$linep[$i];
 			checkInFieldname($fieldnamep,$array[2]);
@@ -552,14 +550,14 @@ sub processTakeChunk {
 			my $wantedLine = $$linep[$i];
 			$wantedLine =~ s/^\s*Taking //;
 			if ($$linep[$i+1] =~ /^\s+Splitting at /) {
-				($splitNum,my $splitChunkLength,my $newStartingAdd) = processSplit($fieldnamep,($i+1),$splitNum,$linep,$indentp,'array'.$splitNum,$wantedLine);
+				($splitNum,my $splitChunkLength,my $newStartingAdd) = processSplit($fieldnamep,($i+1),$splitNum,$linep,$indentp,'array'.$splitNum,$wantedLine,$vnamesp,$vindex);
 				$outputVal .= $newStartingAdd;
 				$i += $splitChunkLength+1;
 			}
 		} elsif ($$linep[$i] =~ /^\s*Follow [0-9]+$/) {
 			# TODO switch to http(s) mode if you're in local file mode and encounter http(s) to follow
 			my $findex = $$linep[$i];
-			$findex =~ s/^\s*Follow //g;
+			$findex =~ s/^\s*Follow //;
 			my $condInsert = '';
 			my $iterInsert   = '';
 			if ($$linep[$i+1] =~ /^\s+(Times|Limit) [0-9]*$/) {
@@ -573,7 +571,7 @@ sub processTakeChunk {
 			$outputVal .= "\t\t".'if ('.$condInsert.'defined($array'.$splitNum.'['.$findex.'])) {'."\n"
 				     .$iterInsert
 				     ."\t\t\t".'push @fileList, completeURLchew($array'.$splitNum.'['.$findex.'], $fileList[0]);'."\n"  #TODO eliminate need to assume that $fileList[0] is a proper URL
-				     ."\t\t".'}'."\n";   # easier to read
+				     ."\t\t".'}'."\n";   # easier to read imo
 		# TODO implement Cutting
 		} else {
 			die 'ERROR: Correctly formatted Take statement expected on line '.($i+1).", found: $$linep[$i]\n";
@@ -583,7 +581,7 @@ sub processTakeChunk {
 }
 sub processAtChunk {
 	# "Locating" bracket can include Splitting, Capture, Cutting, others? 
-	my ( $fieldnamep, $startLine, $splitNum, $curVName, $linep, $indentp ) = @_;
+	my ( $fieldnamep, $startLine, $splitNum, $curVName, $linep, $indentp, $vnamesp, $vindex ) = @_;
 	my $outputVal = '';
 	unless ($$linep[$startLine] =~ /^\s+At ([+-]?[1-9]\d*|0)$/) {
 		die 'ERROR: At statement expected on line '.($startLine+1).".\n";
@@ -596,7 +594,7 @@ sub processAtChunk {
 			for (my $j = $i+1; $j < @$linep; $j++) {
 				if ($$indentp[$j] > $$indentp[$i]) {
 					if ($$linep[$j] =~ /^\s*Splitting /) {
-						($splitNum, my $skipLines, my $startingAdd) = processSplit($fieldnamep,$j,$splitNum,\@lines,\@indentDepth,'chewLines',$lookWhere);
+						($splitNum, my $skipLines, my $startingAdd) = processSplit($fieldnamep,$j,$splitNum,\@lines,\@indentDepth,'chewLines',$lookWhere,$vnamesp,$vindex);
 						$outputVal .= $startingAdd;
 						$j += $skipLines;
 					}
@@ -629,9 +627,10 @@ foreach my $line (@chewLines) {
 }
 # AUXILIARY FUNCTIONS
 sub extractRegex {
-	$_[1] =~ s/^\s*$_[0] \///;
-	$_[1] =~ s/\/$//;
-	return sanitiseRegex($_[1]);
+	my $temp = $_[1];
+	$temp =~ s/^\s*$_[0] \///;
+	$temp =~ s/\/$//;
+	return sanitiseRegex($temp);
 }
 sub sanitiseRegex {	# makes sure there are no single / in the middle of a regex that would escape it
 	my @chars = split //, $_[0];
@@ -721,4 +720,17 @@ sub checkFieldExistsForDrop {
 		}
 	}
 	die "ERROR: Unknown field $value specified in drop/remove/delete condition. The field must already be known before a condition can be placed on it.\n";
+}
+sub prepFieldNamesAndInitiations {
+	my ($globalDeclarations, $fieldnamep) = @_;
+	if (@$fieldnamep) {
+		$$globalDeclarations .= 'my @fieldNames = (';
+		foreach (@$fieldnamep) {
+			$$globalDeclarations .= '"'.$_.'",';
+		}
+		chop $$globalDeclarations;
+		$$globalDeclarations .= ');'."\n".'my %chewFieldInitiations;'."\n".'foreach (@fieldNames) { $chewFieldInitiations{$_} = 0; }'."\n";
+	} else {
+		die "ERROR: No valid data capture instructions found in script.\n";
+	}
 }
