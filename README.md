@@ -73,9 +73,9 @@ The locating context allows accessing the lines around a matching line. It is si
 As HTML in particular is predominantly line break agnostic, some websites are delivered as a single line of code. We can remedy this via:
 
 * Reframe [/*replacement expression*/]
-  * Reframe on its own cuts at every '><' border; with a replacement regex of the format /*where you find this*/*replace with this*/, it becomes more versatile. If the replacement expression contains one or several newline characters, the file will be broken into lines at those points.
+  * Reframe on its own cuts at every '><' border; with a replacement regex of the format /*where you find this*/*replace with this*/, it becomes more versatile. If the replacement expression contains one or several newline characters, the file will be broken into lines at those points. Reframe is *previewable* instruction - more on that below.
 
-When it's needed, reframing is one of the first things you'll want to instruct Chew to do when you're starting to write a script, and so output from the reframe action will be printed when your *Reframe* line is the last line in your file, to help you check your working.
+When needed, reframing is one of the first things you'll want to instruct Chew to do when you're starting to write a script, and so output from the reframe action will be printed when your *Reframe* line is the last line in your file, to help you check your working. Other previewable statements are discussed in a separate section, below.
 
 ## Clean output
 Output data cleaning can also be performed in Chew:
@@ -96,6 +96,13 @@ Sometimes, links that you need to follow to get all of your data may have arbitr
 
 * Follow *number*
   * This appends the extract at *number* to the list of files (pages) to be read and processed.
+
+## Checking your working using previews
+Reframe and Locating are previewable instructions. We've already discussed Reframe, above.
+
+Leaving Locating as the last line of your file makes Chew display the lines around your line of focus, at the first occurrence within the file. In this way, Chew helps you pick your processing target(s) from within your defined Locating context.
+
+In terms of developing a great user experience especially in the context of an integrated development environment (IDE), having commands provide such previews is a huge added value feature for Chew. Specifically, a line could be selected in the IDE and an excerpt of the chew script executed up to that line, for debugging and without altering the contents of your chew file. Live updates as you type are also possible by the same mechanism.
 
 ## Advanced topic: Integration with Perl code
 Chew can act as a superset of sorts for Perl:
