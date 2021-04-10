@@ -304,7 +304,7 @@ sub dispatch {
 sub mainProcessing {
 	my ($fieldnamep, $startLine, $linep, $indentp, $recursive, $vnamesp, $vindex,
 	  $startingStatement,  $stoppingStatement,  $preamble2,  $dropInsert,  $dropClosure,  $globalDeclarations,  $closingBrackets,  $outputFormat) = @_;
-	my $curVName = $$vnamesp[++$vindex];
+	my $curVName = $$vnamesp[$vindex++];
 	my $hasStartStatement = 0;
 	my $mainIndent = $$indentp[$startLine];
 	for (my $i = $startLine; $i < @$linep; $i++) {
