@@ -6,6 +6,7 @@ Design priorities:
 * Short, readable code
 * Ease of learning (esp. being incrementally useful)
 * Avoidance of non-alphanumeric (modal) characters when reasonably possible
+* Avoidance of user-exposed state-tracking variables when possible
 * Modelled after natural English usage
 * Experimental introduction of "contexts" to replace/unify flow control and parameters
 
