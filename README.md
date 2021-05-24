@@ -104,6 +104,23 @@ Leaving Locating as the last line of your file makes Chew display the lines arou
 
 In terms of developing a great user experience especially in the context of an integrated development environment (IDE), having commands provide such previews is a huge added value feature for Chew. Specifically, a line could be selected in the IDE and an excerpt of the chew script executed up to that line, for debugging and without altering the contents of your chew file. Live updates as you type are also possible by the same mechanism.
 
+## Advanced topic: Dealing with non-repeated or missing data
+As long as you follow one simple rule, Chew can automatically fill in missing data for you based on what was previously captured. This is useful when using sources that aggregate data under headings, like listing some apple varieties under the heading "Apple" and then listing pear varieties under the heading "Pear", but we'd like to capture whether a variety was an apple or a pear. As long as data is captured in the order in which it appears in the source document (i.e. we instruct Chew to capture the heading on a line above the line where we instruct Chew to capture the data underneath the heading), Chew can correctly assign fruit type to variety, in this example, even though the data is not repeated on the page. To do this, we use the syntax *Recall default*, which is an option for a *Taking* context. Again, this will only work if your capture instructions match the order in which data appears on the page. This should ensure equal column lengths, and Chew will warn if this is not the case.
+
+* Recall default to *value*
+  * When using the recall ability, a default must also be specified in case so that Chew has another option when no recall value is available (i.e. there is data missing in the first row).
+
+Alternatively, we can assign a special value for missing data, such as 0, 1 or any arbitrary value, or an empty value as might be needed to ensure row integrity and equal column lengths when data is sometimes genuinely missing in the source document. To achieve this, we use the *Default* syntax within a *Taking* context. That is, *Default* also is an option to *Taking*.
+
+* Default to *value*
+  * This fills in *value* whenever the field has missed a turn in receiving a value.
+
+If you specify *Recall* or *Default* for any field, Chew will currently demand that you do so for all fields. This convention maximises row integrity, which is what we're trying to achieve.
+
+While the above may sound great, it's important to remember that these options are convenience functions, not golden bullets. For instance, Chew currently makes no distinction between missing and non-repeated data, while a human operator can sometimes discern the difference.
+
+So you should still check your output, especially for discrepancies against the data in your source. This may highlight ways for you to improve and fine-tune your script.
+
 ## Advanced topic: Integration with Perl code
 Chew can act as a superset of sorts for Perl:
 
@@ -115,7 +132,7 @@ Your Perl code can access the captured data via the hash of arrays, *%capturedDa
 **There are some rules for this to work.** For better readability, functions that Chew needs will be placed *after* your own Perl code in the compiled file, along with the call to print warnings. This only works if the Perl code you're adding does not interfere with allowing these functions to be read by Perl.
 
 # Current status of feature creep
-14/20 completed approximately
+15/20 completed approximately
 
 [//]: # (&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;)
 
