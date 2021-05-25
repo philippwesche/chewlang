@@ -4,7 +4,7 @@
 # code generator with heavy emphasis on regular expressions
 # and anticipated use in data scraping.
 #
-# It currently compiles down to Perl5.
+# It currently compiles down to Perl 5.
 #
 # Design priorities:
 # - Short, readable code
@@ -37,8 +37,7 @@ use Getopt::Long;
 my $outputProgLang = '';
 GetOptions ("code=s" => \$outputProgLang);
 
-open IN, $ARGV[0];
-chomp(my @lines = <IN>);
+chomp(my @lines = <>);
 #remove comments and excess white space
 for (my $i = 0; $i < @lines; $i++) {
 	if ($lines[$i] =~ /^\s*\#/) {
@@ -607,16 +606,25 @@ sub processTakeChunk {
 			# TODO switch to http(s) mode if you're in local file mode and encounter http(s) to follow
 			my $findex = $$linep[$i];
 			$findex =~ s/^\s*Follow //;
+			$outputVal .= "\t\t".'if (defined($array'.$splitNum.'['.$findex.'])) {'."\n"
+				     ."\t\t\t".'push @fileList, completeURLchew($array'.$splitNum.'['.$findex.'], $fileList[0]);'."\n"  #TODO eliminate need to assume that $fileList[0] is a proper URL
+				     ."\t\t".'}'."\n";   # easier to read imo
+		# TODO implement Cutting
+		} elsif ($$linep[$i] =~ /^\s*Following [0-9]+$/) {
+			# TODO switch to http(s) mode if you're in local file mode and encounter http(s) to follow
+			my $findex = $$linep[$i];
+			$findex =~ s/^\s*Following //;
 			my $condInsert = '';
 			my $iterInsert   = '';
-			if ($$linep[$i+1] =~ /^\s+(Times|Limit) [0-9]*$/) {
-				my $times = $$linep[$i+1];
-				$times =~ s/^\s*(Times|Limit) //;
-				$i++;
-				$globalDeclarations .= 'my $followTimes = 0;'."\n";
-				$condInsert .= '$followTimes < '.$times.' && ';
-				$iterInsert .= "\t\t\t".'$followTimes++;'."\n";
+			unless ($$linep[$i+1] =~ /^\s+(Times|Limit) [0-9]*$/) {
+				die 'ERROR: "Following" statement must be followed by "Times" or "Limit" on the next line. For use without options, use the simpler verb form, "Follow".'."\n";
 			}
+			my $times = $$linep[$i+1];
+			$times =~ s/^\s*(Times|Limit) //;
+			$i++;
+			$globalDeclarations .= 'my $followTimes = 0;'."\n";
+			$condInsert .= '$followTimes < '.$times.' && ';
+			$iterInsert .= "\t\t\t".'$followTimes++;'."\n";
 			$outputVal .= "\t\t".'if ('.$condInsert.'defined($array'.$splitNum.'['.$findex.'])) {'."\n"
 				     .$iterInsert
 				     ."\t\t\t".'push @fileList, completeURLchew($array'.$splitNum.'['.$findex.'], $fileList[0]);'."\n"  #TODO eliminate need to assume that $fileList[0] is a proper URL
