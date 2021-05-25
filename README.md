@@ -20,7 +20,7 @@ A quick live demo can be found at http://chewlang.com
 
 # Syntax principles
 ## Gerund sets up a context
-In Chew, the gerund form of a verb is used to indicate that further instructions follow that should be processed in the context of the first command, or that modify its intended meaning. This is similar to the use of a semicolon in Python, or curly brackets in languages styled after C (C++, Perl, Java). One noteworthy example is *Take* versus *Taking*, where the latter allows and enforces further processing.
+In Chew, the gerund form of a verb is used to indicate that further instructions follow that should be processed in the context of the first command, or that modify its intended meaning. This is similar to the use of a semicolon in Python, or curly brackets in languages styled after C (C++, Perl, Java). One noteworthy example is *Take* versus *Taking*, where the latter both allows and requires further options.
 
 ## Indenting
 Commands with global effect are specified without indent (currently Reading, Starting, Stopping, Skipping, Hand-over, Output, Outputting). For other commands, you would start in the base column and then use a consistent indenting pattern thereafter. Basically the same as Python.
