@@ -224,7 +224,7 @@ mainProcessing(1, \@lines, \@indentDepth, 0, \@vNames, $vindex,
 # CONSTRUCTING OUTPUT
 my $outputPreparation = 'my $outputRowCount = 0;'."\n"
 		       .'my $chewWarnings = "";'."\n"
-		         .'foreach (@fieldNames) {'."\n"
+		       .'foreach (@fieldNames) {'."\n"
 		       .'  if ( $chewFieldInitiations{$_} ) {'."\n"
 		       .'    if ( $outputRowCount != 0 && $outputRowCount != @{ $capturedData{$_} } ) {'."\n"
 		       .'      $chewWarnings .='."\n"
@@ -324,7 +324,7 @@ sub dispatch {
 # PARSING FUNCTIONS
 sub mainProcessing {
 	my ($startLine, $linep, $indentp, $recursive, $vnamesp, $vindex,
-	  $startingStatement,  $stoppingStatement,  $preamble2,  $dropInsert,  $dropClosure,  $globalDeclarations,  $closingBrackets,  $outputFormat) = @_;
+	  $startingStatement,  $stoppingStatement,  $preamble2,  $dropInsert,  $dropClosure,  $globalDecp,  $closingBrackets,  $outputFormat) = @_;
 	my $curVName = $$vnamesp[$vindex++];
 	my $hasStartStatement = 0;
 	my $mainIndent = $$indentp[$startLine];
@@ -413,7 +413,7 @@ sub mainProcessing {
 					$shortLine =~ s/^\s+//;
 					$$startingStatement .= 'print "Your statement \''.$shortLine.'\' sets up this context for adding \'At\' statements:\n";'."\n"
 							       ."\t\t".'for (my $itera = -5; $itera < 11; $itera++) { print "$itera\t$chewLines[$'.$curVName.'+$itera]\n"; } exit; }'."\n";
-					prepFieldNamesAndInitiations($globalDeclarations,\@fieldNames,\%recalls,\%defaults);
+					prepFieldNamesAndInitiations($globalDecp,\@fieldNames,\%recalls,\%defaults);
 				} else {
 					my $masterIndent = $$indentp[$i];
 					my $atChunkPerlCode;
@@ -448,36 +448,36 @@ sub mainProcessing {
 			unless ($$outputFormat eq 'tsv+header') {
 				die "ERROR: Specified output format not known on line ".($i+1).".\n";
 			}
-			prepFieldNamesAndInitiations($globalDeclarations,\@fieldNames,\%recalls,\%defaults);
-		#} elsif ($$linep[$i] =~ /^Outputting /i) {	#DISABLED BECAUSE IMPLEMENTATION CONFLICTS WITH DEFAULTS/RECALL
-			#$$outputFormat = (split /^Outputting /, $$linep[$i])[1];
-			#unless ($$outputFormat eq 'tsv+header') {
-			#	die "ERROR: Specified output format not known on line ".($i+1).".\n";
-			#}
-			#if ($i < (@$linep-1)) {
-			#	if ($$linep[$i+1] =~ /^\s*Order /) {
-			#		my $orderline = $$linep[$i+1];
-			#		$orderline =~ s/^\s*Order //;
-			#		my @order = split /\s*\,\s*/, $orderline;
-KAYA:			#		for (my $kaya = 0; $kaya < @fieldNames; $kaya++) {
-			#			for (my $jayden = 0; $jayden < @order; $jayden++) {
-			#				if ($order[$jayden] eq $fieldNames[$kaya]) {
-			#					next KAYA;
-			#				}
-			#				if ($jayden == @order-1) {
-			#					die 'ERROR: "Order" statement on line '.($i+2).' does not match the list of names of captured fields. Should contain same items in any order: '."@fieldNames\n";
-			#				}
-			#			}
-			#		}
-			#		$$globalDeclarations .= 'my @fieldNames = (\''. join ("','",@order) .'\');'."\n"
-			#				      .'my %chewFieldInitiations;'."\n".'foreach (@fieldNames) { $chewFieldInitiations{$_} = 0; }'."\n";
-			#		$i++;
-			#	} else {
-			#		die 'ERROR: "Outputting" must be followed by "Order" on line '.($i+2).".\n";
-			#	}
-			#} else {
-			#	die 'ERROR: Premature end of file. "Outputting" must be followed by "Order".'."\n";
-			#}
+			prepFieldNamesAndInitiations($globalDecp,\@fieldNames,\%recalls,\%defaults);
+		} elsif ($$linep[$i] =~ /^Outputting /i) {
+			$$outputFormat = (split /^Outputting /, $$linep[$i])[1];
+			unless ($$outputFormat eq 'tsv+header') {
+				die "ERROR: Specified output format not known on line ".($i+1).".\n";
+			}
+			if ($i < (@$linep-1)) {
+				if ($$linep[$i+1] =~ /^\s*Order /) {
+					my $orderline = $$linep[$i+1];
+					$orderline =~ s/^\s*Order //;
+					my @order = split /\s*\,\s*/, $orderline;
+KAYA:					for (my $kaya = 0; $kaya < @fieldNames; $kaya++) {
+						for (my $jayden = 0; $jayden < @order; $jayden++) {
+							if ($order[$jayden] eq $fieldNames[$kaya]) {
+								next KAYA;
+							}
+							if ($jayden == @order-1) {
+								die 'ERROR: "Order" statement on line '.($i+2).' does not match the list of names of captured fields. Should contain same items in any order: '."@fieldNames\n";
+							}
+						}
+					}
+					$$closingBrackets .= '@fieldNames = (\''. join ("','",@order) .'\');'."\n";
+					prepFieldNamesAndInitiations($globalDecp,\@fieldNames,\%recalls,\%defaults);
+					$i++;
+				} else {
+					die 'ERROR: "Outputting" must be followed by "Order" on line '.($i+2).".\n";
+				}
+			} else {
+				die 'ERROR: Premature end of file. "Outputting" must be followed by "Order".'."\n";
+			}
 		} else {
 			die 'ERROR: Line '.($i+1).' did not match any expected expression (Reframe, Starting, Stopping, Skipping, Matching, Locating, Splitting, Capture).'."\n";
 		}
@@ -622,7 +622,7 @@ sub processTakeChunk {
 			my $times = $$linep[$i+1];
 			$times =~ s/^\s*(Times|Limit) //;
 			$i++;
-			$globalDeclarations .= 'my $followTimes = 0;'."\n";
+			$globalDeclarations .= 'my $followTimes = 0;'."\n";	#TODO pass a \$globalDeclarations variable ref to this func like elsewhere
 			$condInsert .= '$followTimes < '.$times.' && ';
 			$iterInsert .= "\t\t\t".'$followTimes++;'."\n";
 			$outputVal .= "\t\t".'if ('.$condInsert.'defined($array'.$splitNum.'['.$findex.'])) {'."\n"
@@ -779,15 +779,15 @@ sub checkFieldExistsForDrop {
 	die "ERROR: Unknown field $value specified in drop/remove/delete condition. The field must already be known before a condition can be placed on it.\n";
 }
 sub prepFieldNamesAndInitiations {
-	my ($globalDeclarations, $fieldnamep, $recallp, $defaultp) = @_;
+	my ($globalDecp, $fieldnamep, $recallp, $defaultp) = @_;
 	if (@$fieldnamep) {
-		$$globalDeclarations .= 'my @fieldNames = (';
+		$$globalDecp .= 'my @fieldNames = (';
 		foreach (@$fieldnamep) {
-			$$globalDeclarations .= '"'.$_.'",';
+			$$globalDecp .= '"'.$_.'",';
 		}
-		chop $$globalDeclarations;
-		$$globalDeclarations .= ');'."\n".'my %chewFieldInitiations;'."\n".'foreach (@fieldNames) { $chewFieldInitiations{$_} = 0; }'."\n";
-		$$globalDeclarations .= checkAndAddDefaultsRecalls($fieldnamep,$recallp,$defaultp);
+		chop $$globalDecp;
+		$$globalDecp .= ');'."\n".'my %chewFieldInitiations;'."\n".'foreach (@fieldNames) { $chewFieldInitiations{$_} = 0; }'."\n";
+		$$globalDecp .= checkAndAddDefaultsRecalls($fieldnamep,$recallp,$defaultp);
 	} else {
 		die "ERROR: No valid data capture instructions found in script.\n";
 	}
