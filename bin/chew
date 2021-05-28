@@ -35,7 +35,10 @@ use warnings;
 use Getopt::Long;
 
 my $outputProgLang = '';
-GetOptions ("code=s" => \$outputProgLang);
+my $outputVarName = '';
+GetOptions ("code=s" => \$outputProgLang,
+	    "outputvariable=s" => \$outputVarName);
+unless ($outputVarName) { $outputVarName = 'capturedData'; }
 
 chomp(my @lines = <>);
 #remove comments and excess white space
@@ -53,7 +56,7 @@ for (my $i = 0; $i < @lines; $i++) {
 my $preamble1 = "use strict;use warnings;use sigtrap;\n"
 	       .'use open ":std", ":encoding(UTF-8)";'."\n"
 	       .'use LWP 5.64;'."\n";
-my $globalDeclarations .= 'my %capturedData;'."\n";
+my $globalDeclarations .= 'my %'.$outputVarName.';'."\n";
 my $preamble2 = '';
 my $bracketOpener = '';
 my $startingStatement = '';
@@ -227,12 +230,12 @@ my $outputPreparation = 'my $outputRowCount = 0;'."\n"
 		       .'my $chewWarnings = "";'."\n"
 		       .'foreach (@fieldNames) {'."\n"
 		       .'  if ( $chewFieldInitiations{$_} ) {'."\n"
-		       .'    if ( $outputRowCount != 0 && $outputRowCount != @{ $capturedData{$_} } ) {'."\n"
+		       .'    if ( $outputRowCount != 0 && $outputRowCount != @{ $'.$outputVarName.'{$_} } ) {'."\n"
 		       .'      $chewWarnings .='."\n"
 		       .'		   "WARNING: Output column \"$_\" has a different length than a previous column.\n";'."\n"
 		       .'    }'."\n"
-		       .'    if ( $outputRowCount < @{ $capturedData{$_} } ) {'."\n"
-		       .'      $outputRowCount = @{ $capturedData{$_} };'."\n"
+		       .'    if ( $outputRowCount < @{ $'.$outputVarName.'{$_} } ) {'."\n"
+		       .'      $outputRowCount = @{ $'.$outputVarName.'{$_} };'."\n"
 		       .'    }'."\n"
 		       .'  } else {'."\n"
 		       .'    $chewWarnings .= "\nWARNING: Output column \"$_\" contains no data.\n";'."\n"
@@ -245,8 +248,8 @@ if ($outputFormat) {
 			       .$dropInsert
 			       .'	$chewOutputLines[$i] = "";'."\n"
 			       .'	foreach (@fieldNames) {'."\n"
-			       .'		if ( defined( ${ $capturedData{$_} }[$i] ) ) {'."\n"
-			       .'			$chewOutputLines[$i] .= ${ $capturedData{$_} }[$i];    }'."\n"
+			       .'		if ( defined( ${ $'.$outputVarName.'{$_} }[$i] ) ) {'."\n"
+			       .'			$chewOutputLines[$i] .= ${ $'.$outputVarName.'{$_} }[$i];    }'."\n"
 			       .'		$chewOutputLines[$i] .= "\t";'."\n"    #prevent column slippage by inserting tab even if no data captured for this col
 			       .$dropClosure
 			       .'} }'."\n"
@@ -302,9 +305,9 @@ sub chewAddForNonRepeated {
 	my ($reference, $ziz, $decrement) = @_;
 	if  ($chewFieldInitiations{$fieldNames[$ziz]} < ($chewFieldInitiations{$reference} - $decrement) ) {
 		if ( $recalls{ $fieldNames[$ziz] } && $chewFieldInitiations{ $fieldNames[$ziz] } )  {  # do any previous entries exist
-			push @{ $capturedData{$fieldNames[$ziz]} }, $capturedData{$fieldNames[$ziz]}[$chewFieldInitiations{$fieldNames[$ziz]}-1];
+			push @{ $'.$outputVarName.'{$fieldNames[$ziz]} }, $'.$outputVarName.'{$fieldNames[$ziz]}[$chewFieldInitiations{$fieldNames[$ziz]}-1];
 		} else {
-		        push @{ $capturedData{$fieldNames[$ziz]} }, $defaults{$fieldNames[$ziz]};
+		        push @{ $'.$outputVarName.'{$fieldNames[$ziz]} }, $defaults{$fieldNames[$ziz]};
 		}
 		$chewFieldInitiations{$fieldNames[$ziz]}++;
 	}
@@ -396,7 +399,7 @@ sub mainProcessing {
 				checkInFieldname( \@fieldNames, $array2[$#array2] );
 				$$startingStatement .= "\t".'if ($chewLines[$'.$curVName.'] =~ /'.$regex.'/) {'."\n"
 						     ."\t\t".'$chewFieldInitiations{'.$array2[$#array2].'}++;'."\n"
-						     ."\t\t".'push @{ $capturedData{'.$array2[$#array2].'} }, substr($chewLines[$'.$curVName.'], $-[0], $+[0] - $-[0]);'."\n\t\t".'# Note about the above: the expression contained in substr()'."\n\t\t".'# is some slightly obscure Perl magic that refers to the last-matched string'."\n"
+						     ."\t\t".'push @{ $'.$outputVarName.'{'.$array2[$#array2].'} }, substr($chewLines[$'.$curVName.'], $-[0], $+[0] - $-[0]);'."\n\t\t".'# Note about the above: the expression contained in substr()'."\n\t\t".'# is some slightly obscure Perl magic that refers to the last-matched string'."\n"
 						     ."\t}\n";
 			} else {
 				die 'ERROR: Illegal end to "Capture" statement on line '.($i+1).", found: $$linep[$i]\n";
@@ -437,7 +440,7 @@ sub mainProcessing {
 				$splitRes[5] =~ s/^\///;
 				$splitRes[5] =~ s/\/$//;
 				my $regex = sanitiseRegex($splitRes[5]);
-				$$dropInsert .= '    unless ($capturedData{'.$wantedField.'}[$i] =~ /'.$regex.'/) {'."\n";
+				$$dropInsert .= '    unless ($'.$outputVarName.'{'.$wantedField.'}[$i] =~ /'.$regex.'/) {'."\n";
 				$$dropClosure .= "}\n";
 			} else {
 				die 'ERROR: Illegal end to "Drop", "Remove" or "Delete" statement on line '.($i+1).".\n";
@@ -569,7 +572,7 @@ sub processTakeChunk {
 			my @array = split /Take | as /, $$linep[$i];
 			checkInFieldname($fieldnamep,$array[2]);
 			$outputVal .= "\t\t".'$chewFieldInitiations{'.$array[2].'}++ if defined($array'.$splitNum.'['.$array[1].']);'."\n"
-				     ."\t\t".'push @{ $capturedData{'.$array[2].'} }, $array'.$splitNum.'['.$array[1].'] if defined($array'.$splitNum.'['.$array[1].']);'."\n";
+				     ."\t\t".'push @{ $'.$outputVarName.'{'.$array[2].'} }, $array'.$splitNum.'['.$array[1].'] if defined($array'.$splitNum.'['.$array[1].']);'."\n";
 		} elsif ($$linep[$i] =~ /^\s*Taking [0-9]+ as [A-Za-z][A-Za-z0-9]*$/) {
 			unless ( $$indentp[$i+1] == $$indentp[$i]+1
 			      && (   ($$linep[$i+1]   =~ /^\s+Clean(ing)? (up)? \// && $$linep[$i+1]   =~ /\/$/)
@@ -588,11 +591,11 @@ sub processTakeChunk {
 				$outputVal .= "\t\t\t".'$array'.$splitNum.'['.$array[1].'] =~ s'.$_."g;\n"; # NB substitution is currently global by default!
 			}
 			$outputVal .= "\t\t\t".'$chewFieldInitiations{'.$array[2].'}++;'."\n"
-				     ."\t\t\t".'push @{ $capturedData{'.$array[2].'} }, $array'.$splitNum.'['.$array[1].'];'."\n";
+				     ."\t\t\t".'push @{ $'.$outputVarName.'{'.$array[2].'} }, $array'.$splitNum.'['.$array[1].'];'."\n";
 			if ($defaultDefined) {
 				$outputVal .= "\t\t".'} else {'."\n"
 					     ."\t\t\t".'$chewFieldInitiations{'.$array[2].'}++;'."\n"
-					     ."\t\t\t".'push @{ $capturedData{'.$array[2].'} }, $defaults{'.$array[2].'};'."\n";
+					     ."\t\t\t".'push @{ $'.$outputVarName.'{'.$array[2].'} }, $defaults{'.$array[2].'};'."\n";
 			}
 			$outputVal .= "\t\t}\n";
 			$outputVal .= "\t\tchewCheckForNonRepeatedAfter('".$array[2]."');\n" if $defaultDefined;
