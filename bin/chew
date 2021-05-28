@@ -40,7 +40,8 @@ GetOptions ("code=s" => \$outputProgLang);
 chomp(my @lines = <>);
 #remove comments and excess white space
 for (my $i = 0; $i < @lines; $i++) {
-	if ($lines[$i] =~ /^\s*\#/) {
+	if (  $lines[$i] =~ /^\s*\#/
+	   || $lines[$i] =~ /^\s*$/  ) {
 		splice @lines, $i, 1;
 		$i--;
 	}
@@ -442,6 +443,7 @@ sub mainProcessing {
 				die 'ERROR: Illegal end to "Drop", "Remove" or "Delete" statement on line '.($i+1).".\n";
 			}
 		} elsif ($$linep[$i] =~ /^Hand-over$/i) {
+			prepFieldNamesAndInitiations(\$globalDeclarations,\@fieldNames,\%recalls,\%defaults);
 			last;
 		} elsif ($$linep[$i] =~ /^Output /i) {
 			$$outputFormat = (split /^Output /, $$linep[$i])[1];
