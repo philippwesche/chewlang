@@ -60,21 +60,16 @@ my $globalDeclarations .= 'my %'.$outputVarName.';'."\n";
 my $preamble2 = '';
 my $bracketOpener = '';
 my $startingStatement = '';
-my $stoppingStatement = '';
-my $skippingStatement = '';
-my $dropInsert = '';
-my $dropClosure = '';
-my $funcStr    = 'sub chewURLlines {'."\n"	#TODO needs-based inclusion instead - NB Dipping into!
+my $funcStr    = 'sub chewURLlines {'."\n"
 	        ."\t".'my $res = $_[0]->get($_[1]);'."\n"
 	        ."\t".'die "ERROR at $_[1]\n", $res->status_line, "\n Aborting\n" unless $res->is_success;'."\n"
 	        ."\t".'return (split (/\n/, $res->decoded_content));'."\n"
 	        .'}'."\n";
 my $nonChewCode = '';
-my $closingBrackets = "}\n";
 my $outputFormat;
 my @vNames = ('a','b','c','d','e','f','g','h','i','j','k','l','m','n','o','p','r','s','t','u','v','w','x','y','z','aa','ab','ac','ad','ae','af','ag','ah','ai','aj','ak','al','am','an','ao','ap'); #interim solution
 my $vindex = 0;   # put some... have you seen the movie?
-if ($lines[0] =~ /^Reading /) {
+if ($lines[0] =~ /^Reading /) {			#TODO allow reading from multiple ranges and multiple files not in a range
 	warn "'Reading' line contains trailing whitespace\n" if $lines[0] =~ /\s$/;
 	my $url = $lines[0];
 	$url =~ s/^Reading //;
@@ -95,7 +90,7 @@ if ($lines[0] =~ /^Reading /) {
 } else {
 	die 'ERROR: No "Reading" instruction found in first line.'."\n";
 }
-#TODO allow reading from multiple ranges and multiple files not in a range
+my $closingBrackets = "}\n";
 
 #special early exit if reframe is the last command in the file
 if ($lines[@lines-1] =~ /^Reframe \//) {
@@ -122,7 +117,8 @@ if ($lines[@lines-1] =~ /^Output /) {
 		}
 	}
 } elsif ($lines[@lines-2] =~ /^Outputting /) {
-} elsif ($lines[@lines-1] =~ /^\s*Locating /) {
+} elsif ($lines[@lines-1] =~ /^\s*(Locating|Looking) /) {
+	#TODO test this is still working
 } else {
 	for (my $i = 1; $i < @lines; $i++) {
 		if ($lines[$i] =~ /^Hand-over$/i) {
@@ -223,8 +219,11 @@ for (my $i = 1; $i < (@lines-1); $i++) {
 	}
 }
 #main processing
-mainProcessing(1, \@lines, \@indentDepth, 0, \@vNames, $vindex,
-	\$startingStatement, \$stoppingStatement, \$preamble2, \$dropInsert, \$dropClosure, \$globalDeclarations, \$closingBrackets, \$outputFormat);
+my ($dropInsert, $dropClosure, $mainReturn) =
+	mainProcessing(1, \@lines, \@indentDepth, 0, \@vNames, $vindex,
+			\$startingStatement, \$closingBrackets, \$preamble2,
+			\$outputFormat, 'chewLines',
+			\$globalDeclarations);
 # CONSTRUCTING OUTPUT
 my $outputPreparation = 'my $outputRowCount = 0;'."\n"
 		       .'my $chewWarnings = "";'."\n"
@@ -258,7 +257,7 @@ if ($outputFormat) {
 			       .'foreach (@chewOutputLines) { if ($_) { print "$_\n" } }'."\n";
 }
 my $warnLine =	     'warn $chewWarnings if $chewWarnings;'."\n";
-my $output = $preamble1.$globalDeclarations.$preamble2.$bracketOpener.$stoppingStatement.$startingStatement.$skippingStatement.$closingBrackets.$outputPreparation.$outputStatement.$nonChewCode.$warnLine.$funcStr;
+my $output = $preamble1.$globalDeclarations.$preamble2.$bracketOpener.$mainReturn.$outputPreparation.$outputStatement.$nonChewCode.$warnLine.$funcStr;
 
 # adding required subroutines
 if ($output =~ /completeURLchew/) {
@@ -327,18 +326,26 @@ sub dispatch {
 }
 # PARSING FUNCTIONS
 sub mainProcessing {
-	my ($startLine, $linep, $indentp, $recursive, $vnamesp, $vindex,
-	  $startingStatement,  $stoppingStatement,  $preamble2,  $dropInsert,  $dropClosure,  $globalDecp,  $closingBrackets,  $outputFormat) = @_;
+	my ( $startLine,  $linep,  $indentp,  $recursive,  $vnamesp,  $vindex,
+	  $startingStatement,  $closingBrackp, $preamble2,
+	  $outputFormat,  $cycleThrough,
+	  $globalDecp ) = @_;
+
 	my $curVName = $$vnamesp[$vindex++];
 	my $hasStartStatement = 0;
 	my $mainIndent = $$indentp[$startLine];
 	my @fieldNames;
 	my %recalls;
 	my %defaults;
+	my $dropInsert = '';
+	my $dropClosure = '';
+	my $stoppingStatement = '';
 	for (my $i = $startLine; $i < @$linep; $i++) {
 		# only when used recursively, i.e. "Dipping into"
-		if ($$indentp[$i] <= $mainIndent && $recursive) {
-			last;
+		if ($recursive && $$indentp[$i] < $mainIndent) {
+			return ( $dropInsert, $dropClosure,
+				 $stoppingStatement.$$startingStatement.$$closingBrackp,
+				 (($i-1)-$startLine) );
 		}
 		if ($$linep[$i] =~ /^\s*Reframe \//) {
 			# TODO make it safer
@@ -350,11 +357,11 @@ sub mainProcessing {
 		} elsif ($$linep[$i] =~ /^\s*Starting at \//) {
 			if ($$linep[$i] =~ /\/$/) {
 				my $regex = extractRegex('Starting at', $$linep[$i]);
-				$$startingStatement .= "\t".'if ($processing == 0 && $chewLines[$'.$curVName.'] =~ /'.$regex.'/) {'."\n"
+				$$startingStatement .= "\t".'if ($processing == 0 && $'.$cycleThrough.'[$'.$curVName.'] =~ /'.$regex.'/) {'."\n"
 							   ."\t\t".'$processing = 1;'."\n"
 							   ."\t".'}'."\n"
 							   ."\t".'if ($processing == 1) {'."\n";
-				$$closingBrackets = '}'.$$closingBrackets;
+				$$closingBrackp = '}'.$$closingBrackp;
 				$hasStartStatement = 1;
 			} else {
 				die 'ERROR: Illegal end to "Starting" statement on line '.($i+1).".\n";
@@ -362,7 +369,7 @@ sub mainProcessing {
 		} elsif ($$linep[$i] =~ /^\s*Stopping at \//) {
 			if ($$linep[$i] =~ /\/$/) {
 				my $regex = extractRegex('Stopping at', $$linep[$i]);
-				$$stoppingStatement .= "\t".'if ($chewLines[$'.$curVName.'] =~ /'.$regex.'/) {'."\n"
+				$stoppingStatement .= "\t".'if ($'.$cycleThrough.'[$'.$curVName.'] =~ /'.$regex.'/) {'."\n"
 							   ."\t\t".'last;'."\n"
 							   ."\t".'}'."\n";
 			} else {
@@ -379,7 +386,7 @@ sub mainProcessing {
 				if ($hasStartStatement) {
 					$$startingStatement .= '$processing == 1 && '
 				}
-				$$startingStatement .= '$chewLines[$'.$curVName.'] =~ /'.$regex.'/) {'."\n"
+				$$startingStatement .= '$'.$cycleThrough.'[$'.$curVName.'] =~ /'.$regex.'/) {'."\n"
 						    ."\t\t".'$'.$curVName.' += '.$array[1].";\n"
 						    ."\t}\n";
 			} else {
@@ -397,33 +404,33 @@ sub mainProcessing {
 				die 'ERROR: Empty "Capture" search expression on line '.($i+1).".\n" unless $regex;
 				$regex = sanitiseRegex($regex);
 				checkInFieldname( \@fieldNames, $array2[$#array2] );
-				$$startingStatement .= "\t".'if ($chewLines[$'.$curVName.'] =~ /'.$regex.'/) {'."\n"
+				$$startingStatement .= "\t".'if ($'.$cycleThrough.'[$'.$curVName.'] =~ /'.$regex.'/) {'."\n"
 						     ."\t\t".'$chewFieldInitiations{'.$array2[$#array2].'}++;'."\n"
-						     ."\t\t".'push @{ $'.$outputVarName.'{'.$array2[$#array2].'} }, substr($chewLines[$'.$curVName.'], $-[0], $+[0] - $-[0]);'."\n\t\t".'# Note about the above: the expression contained in substr()'."\n\t\t".'# is some slightly obscure Perl magic that refers to the last-matched string'."\n"
+						     ."\t\t".'push @{ $'.$outputVarName.'{'.$array2[$#array2].'} }, substr($'.$cycleThrough.'[$'.$curVName.'], $-[0], $+[0] - $-[0]);'."\n\t\t".'# Note about the above: the expression contained in substr()'."\n\t\t".'# is some slightly obscure Perl magic that refers to the last-matched string'."\n"
 						     ."\t}\n";
 			} else {
 				die 'ERROR: Illegal end to "Capture" statement on line '.($i+1).", found: $$linep[$i]\n";
 			}
 		} elsif ($$linep[$i] =~ /^\s*Splitting at \//) {
-			($splitNum, my $skipLines, my $startingAdd) = processSplit( \@fieldNames, $i, $splitNum, $linep, $indentp, 'chewLines', 0, $vnamesp, $vindex, \%recalls, \%defaults);
+			($splitNum, my $skipLines, my $startingAdd) = processSplit( \@fieldNames, $i, $splitNum, $linep, $indentp, $cycleThrough, 0, $vnamesp, $vindex, \%recalls, \%defaults, $startingStatement);
 			$$startingStatement .= $startingAdd;
 			$i += $skipLines;
 		} elsif ($$linep[$i] =~ /^\s*(Locating|Looking) around \//) {
 			if ($$linep[$i] =~ /\/$/) {
 				my $regex = extractRegex('(Locating|Looking) around', $$linep[$i]);
-				$$startingStatement .= "\t".'if ($chewLines[$'.$curVName.'] =~ /'.$regex.'/) {'."\n";
+				$$startingStatement .= "\t".'if ($'.$cycleThrough.'[$'.$curVName.'] =~ /'.$regex.'/) {'."\n";
 				if ($i == (@$linep-1)) {	# early, "interactive" exit
 					my $shortLine = $$linep[$i];
 					$shortLine =~ s/^\s+//;
 					$$startingStatement .= 'print "Your statement \''.$shortLine.'\' sets up this context for adding \'At\' statements:\n";'."\n"
-							       ."\t\t".'for (my $itera = -5; $itera < 11; $itera++) { print "$itera\t$chewLines[$'.$curVName.'+$itera]\n"; } exit; }'."\n";
+							       ."\t\t".'for (my $itera = -5; $itera < 11; $itera++) { print "$itera\t$'.$cycleThrough.'[$'.$curVName.'+$itera]\n"; } exit; }'."\n";
 					prepFieldNamesAndInitiations($globalDecp,\@fieldNames,\%recalls,\%defaults);
 				} else {
 					my $masterIndent = $$indentp[$i];
 					my $atChunkPerlCode;
 					for (my $j = $i+1; $j < @$linep; $j++) {
 						if ($$indentp[$j] <= $masterIndent) {
-							($atChunkPerlCode, $splitNum) = processAtChunk( \@fieldNames, ($i+1), $splitNum, $curVName, $linep, $indentp,$vnamesp,$vindex,\%recalls, \%defaults);
+							($atChunkPerlCode, $splitNum) = processAtChunk( \@fieldNames, ($i+1), $splitNum, $curVName, $linep, $indentp,$vnamesp,$vindex,\%recalls, \%defaults, $cycleThrough, $startingStatement);
 							$$startingStatement .= $atChunkPerlCode.'}';
 							$i = $j-1;
 							last;
@@ -433,28 +440,45 @@ sub mainProcessing {
 			} else {
 				die 'ERROR: Illegal end to "Locating" statement on line '.($i+1).".\n";
 			}
-		} elsif ($$linep[$i] =~ /^\s*(Drop|Remove|Delete|Erase) rows? (where|when|whenever|wherever) [A-Za-z][A-Za-z0-9]* matches \//) {
+		} elsif ($recursive == 0 && $$linep[$i] =~ /^\s*(Drop|Remove|Delete|Erase) rows? (where|when|whenever|wherever) [A-Za-z][A-Za-z0-9]* matches \//) {
+			if ($recursive) {
+				die "ERROR: Applying drop criteria to only the data obtained by Dipping, is not currently supported, at line ".($i+1).".\n";
+			}
 			if ($$linep[$i] =~ /\/$/) {
 				my @splitRes = split / +/, $$linep[$i];
 				my $wantedField = checkFieldExistsForDrop(\@fieldNames,$splitRes[3]);
 				$splitRes[5] =~ s/^\///;
 				$splitRes[5] =~ s/\/$//;
 				my $regex = sanitiseRegex($splitRes[5]);
-				$$dropInsert .= '    unless ($'.$outputVarName.'{'.$wantedField.'}[$i] =~ /'.$regex.'/) {'."\n";
-				$$dropClosure .= "}\n";
+				$dropInsert .= '    unless ($'.$outputVarName.'{'.$wantedField.'}[$i] =~ /'.$regex.'/) {'."\n";
+				$dropClosure .= "}\n";
 			} else {
 				die 'ERROR: Illegal end to "Drop", "Remove" or "Delete" statement on line '.($i+1).".\n";
 			}
 		} elsif ($$linep[$i] =~ /^Hand-over$/i) {
-			prepFieldNamesAndInitiations(\$globalDeclarations,\@fieldNames,\%recalls,\%defaults);
-			last;
+			if ($recursive || $$indentp[$i] > 0) {
+				die "ERROR: Hand-over is expected to be found without indents, on line ".($i+1).").\n";
+			}
+			prepFieldNamesAndInitiations($globalDecp,\@fieldNames,\%recalls,\%defaults);
+			return ( $dropInsert, $dropClosure,
+				 $stoppingStatement.$$startingStatement.$$closingBrackp,
+				 (($i-1)-$startLine) );
 		} elsif ($$linep[$i] =~ /^Output /i) {
+			if ($recursive) {
+				die "ERROR: It looks like you're trying to output from within a Dipping context. That is not currently supported. (Line ".($i+1)."). Try outputting at the end of a script, and without indenting.\n";
+			}
 			$$outputFormat = (split /^Output /, $$linep[$i])[1];
 			unless ($$outputFormat eq 'tsv+header') {
 				die "ERROR: Specified output format not known on line ".($i+1).".\n";
 			}
 			prepFieldNamesAndInitiations($globalDecp,\@fieldNames,\%recalls,\%defaults);
+			return ( $dropInsert, $dropClosure,
+				 $stoppingStatement.$$startingStatement.$$closingBrackp,
+				 (($i-1)-$startLine) );
 		} elsif ($$linep[$i] =~ /^Outputting /i) {
+			if ($recursive) {
+				die "ERROR: It looks like you're trying to output from within a Dipping context. That is not currently supported. (Line ".($i+1)."). Try outputting at the end of a script, and without indenting.\n";
+			}
 			$$outputFormat = (split /^Outputting /, $$linep[$i])[1];
 			unless ($$outputFormat eq 'tsv+header') {
 				die "ERROR: Specified output format not known on line ".($i+1).".\n";
@@ -474,7 +498,7 @@ KAYA:					for (my $kaya = 0; $kaya < @fieldNames; $kaya++) {
 							}
 						}
 					}
-					$$closingBrackets .= '@fieldNames = (\''. join ("','",@order) .'\');'."\n";
+					$$closingBrackp .= '@fieldNames = (\''. join ("','",@order) .'\');'."\n";
 					prepFieldNamesAndInitiations($globalDecp,\@fieldNames,\%recalls,\%defaults);
 					$i++;
 				} else {
@@ -483,13 +507,16 @@ KAYA:					for (my $kaya = 0; $kaya < @fieldNames; $kaya++) {
 			} else {
 				die 'ERROR: Premature end of file. "Outputting" must be followed by "Order".'."\n";
 			}
+			return ( $dropInsert, $dropClosure,
+				 $stoppingStatement.$$startingStatement.$$closingBrackp,
+				 (($i-1)-$startLine) );
 		} else {
 			die 'ERROR: Line '.($i+1).' did not match any expected expression (Reframe, Starting, Stopping, Skipping, Matching, Locating, Splitting, Capture).'."\n";
 		}
 	}
 }
 sub processSplit {
-	my ($fieldnamep, $i, $splitNum, $linep, $indentp, $cycleThrough, $lineDeviation, $vnamesp, $vindex,$recallp,$defaultp) = @_;
+	my ($fieldnamep, $i, $splitNum, $linep, $indentp, $cycleThrough, $lineDeviation, $vnamesp, $vindex,$recallp,$defaultp, $startingStatement) = @_;
 	my $startingAdd = '';
 	if ($$linep[$i] =~ /\/$/) {
 		my $regex = extractRegex('Splitting at',$$linep[$i]);
@@ -503,7 +530,7 @@ sub processSplit {
 		#TODO consider catching the warning and passing it on to the user rather than using plain exists() - user might want to know capture failed here
 		$startingAdd .= "\t".'if (exists($'.$cycleThrough.'['.$iterationChunk.']) && $'.$cycleThrough.'['.$iterationChunk.'] =~ /'.$regex.'/) {'."\n"
 			       ."\t\t".'my @array'.$splitNum.' = split /'.$regex.'/, $'.$cycleThrough.'['.$iterationChunk.'];'."\n";
-		($splitNum, my $takeChunkPerlCode, my $skipLines) = processTakeChunk($fieldnamep,($i+1), $splitNum, $linep, $indentp, $vnamesp, $vindex, $recallp, $defaultp);
+		($splitNum, my $takeChunkPerlCode, my $skipLines) = processTakeChunk($fieldnamep,($i+1), $splitNum, $linep, $indentp, $vnamesp, $vindex, $recallp, $defaultp, $cycleThrough, $startingStatement);
 		$startingAdd .= $takeChunkPerlCode."\t}\n";
 		return($splitNum,$skipLines,$startingAdd);
 	} else {
@@ -561,7 +588,7 @@ sub processTakeOptions {
 	}
 }
 sub processTakeChunk {
-	my ($fieldnamep,$startLine,$splitNum,$linep,$indentp,$vnamesp,$vindex,$recallp,$defaultp) = @_;
+	my ($fieldnamep,$startLine,$splitNum,$linep,$indentp,$vnamesp,$vindex,$recallp,$defaultp,$cycleThrough,$startingStatement) = @_;
 	my $outputVal = '';
 	my $chunkLength = 0;
 	for (my $i = $startLine; $i < @$linep; $i++) {
@@ -603,7 +630,7 @@ sub processTakeChunk {
 			my $wantedLine = $$linep[$i];
 			$wantedLine =~ s/^\s*Taking //;
 			if ($$linep[$i+1] =~ /^\s+Splitting at /) {
-				($splitNum,my $splitChunkLength,my $newStartingAdd) = processSplit($fieldnamep,($i+1),$splitNum,$linep,$indentp,'array'.$splitNum,$wantedLine,$vnamesp,$vindex,$recallp,$defaultp);
+				($splitNum,my $splitChunkLength,my $newStartingAdd) = processSplit($fieldnamep,($i+1),$splitNum,$linep,$indentp,'array'.$splitNum,$wantedLine,$vnamesp,$vindex,$recallp,$defaultp,$startingStatement);
 				$outputVal .= $newStartingAdd;
 				$i += $splitChunkLength+1;
 			}
@@ -614,7 +641,6 @@ sub processTakeChunk {
 			$outputVal .= "\t\t".'if (defined($array'.$splitNum.'['.$findex.'])) {'."\n"
 				     ."\t\t\t".'push @fileList, completeURLchew($array'.$splitNum.'['.$findex.'], $fileList[0]);'."\n"  #TODO eliminate need to assume that $fileList[0] is a proper URL
 				     ."\t\t".'}'."\n";   # easier to read imo
-		# TODO implement Cutting
 		} elsif ($$linep[$i] =~ /^\s*Following [0-9]+$/) {
 			# TODO switch to http(s) mode if you're in local file mode and encounter http(s) to follow
 			my $findex = $$linep[$i];
@@ -633,17 +659,17 @@ sub processTakeChunk {
 			$outputVal .= "\t\t".'if ('.$condInsert.'defined($array'.$splitNum.'['.$findex.'])) {'."\n"
 				     .$iterInsert
 				     ."\t\t\t".'push @fileList, completeURLchew($array'.$splitNum.'['.$findex.'], $fileList[0]);'."\n"  #TODO eliminate need to assume that $fileList[0] is a proper URL
-				     ."\t\t".'}'."\n";   # easier to read imo
-		# TODO implement Cutting
+				     ."\t\t".'}'."\n";
 		} else {
-			die 'ERROR: Correctly formatted Take statement expected on line '.($i+1).", found: $$linep[$i]\n";
+			die 'ERROR: Correctly formatted Take, Follow or Dipping statement expected on line '.($i+1).", found: $$linep[$i]\n";
 		}
+		# TODO implement Cutting
 	}
 	return ($splitNum, $outputVal, $chunkLength);
 }
 sub processAtChunk {
 	# "Locating" bracket can include Splitting, Capture, Cutting, others? 
-	my ( $fieldnamep, $startLine, $splitNum, $curVName, $linep, $indentp, $vnamesp, $vindex , $recallp, $defaultp ) = @_;
+	my ( $fieldnamep, $startLine, $splitNum, $curVName, $linep, $indentp, $vnamesp, $vindex , $recallp, $defaultp, $cycleThrough, $startingStatement ) = @_;
 	my $outputVal = '';
 	unless ($$linep[$startLine] =~ /^\s+At ([+-]?[1-9]\d*|0)$/) {
 		die 'ERROR: At statement expected on line '.($startLine+1).".\n";
@@ -656,7 +682,7 @@ sub processAtChunk {
 			for (my $j = $i+1; $j < @$linep; $j++) {
 				if ($$indentp[$j] > $$indentp[$i]) {
 					if ($$linep[$j] =~ /^\s*Splitting /) {
-						($splitNum, my $skipLines, my $startingAdd) = processSplit($fieldnamep,$j,$splitNum,\@lines,\@indentDepth,'chewLines',$lookWhere,$vnamesp,$vindex,$recallp,$defaultp);
+						($splitNum, my $skipLines, my $startingAdd) = processSplit($fieldnamep,$j,$splitNum,\@lines,\@indentDepth, $cycleThrough,$lookWhere,$vnamesp,$vindex,$recallp,$defaultp, $startingStatement);
 						$outputVal .= $startingAdd;
 						$j += $skipLines;
 					}
