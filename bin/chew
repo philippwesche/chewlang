@@ -342,8 +342,7 @@ sub mainProcessing {
 		# only when used recursively, i.e. "Dipping into"
 		if ($recursive && $$indentp[$i] < $mainIndent) {
 			return ( $stoppingStatement.$startingStatement.$$closingBrackp,
-				 $dropInsert, $dropClosure,
-				 (($i-1)-$startLine) );
+				 $dropInsert, $dropClosure );
 		}
 		if ($$linep[$i] =~ /^\s*Reframe \//) {
 			# TODO make it safer
@@ -410,9 +409,9 @@ sub mainProcessing {
 				die 'ERROR: Illegal end to "Capture" statement on line '.($i+1).", found: $$linep[$i]\n";
 			}
 		} elsif ($$linep[$i] =~ /^\s*Splitting at \//) {
-			($splitNum, my $skipLines, my $startingAdd) = processSplit( $fieldnamep, $i, $splitNum, $linep, $indentp, $cycleThrough, 0, $vnamesp, $vindex, \%recalls, \%defaults, \$startingStatement);
+			($splitNum, my $startingAdd) = processSplit( $fieldnamep, $i, $splitNum, $linep, $indentp, $cycleThrough, 0, $vnamesp, $vindex, \%recalls, \%defaults, \$startingStatement);
 			$startingStatement .= $startingAdd;
-			$i += $skipLines;
+			$i = nextSame($indentp, $i) - 1;
 		} elsif ($$linep[$i] =~ /^\s*(Locating|Looking) around \//) {
 			if ($$linep[$i] =~ /\/$/) {
 				my $regex = extractRegex('(Locating|Looking) around', $$linep[$i]);
@@ -424,16 +423,9 @@ sub mainProcessing {
 							       ."\t\t".'for (my $itera = -5; $itera < 11; $itera++) { print "$itera\t$'.$cycleThrough.'[$'.$curVName.'+$itera]\n"; } exit; }'."\n";
 					prepFieldNamesAndInitiations($globalDecp,$fieldnamep,\%recalls,\%defaults);
 				} else {
-					my $masterIndent = $$indentp[$i];
-					my $atChunkPerlCode;
-					for (my $j = $i+1; $j < @$linep; $j++) {
-						if ($$indentp[$j] <= $masterIndent) {
-							($atChunkPerlCode, $splitNum) = processAtChunk( $fieldnamep, ($i+1), $splitNum, $curVName, $linep, $indentp,$vnamesp,$vindex,\%recalls, \%defaults, $cycleThrough, \$startingStatement);
-							$startingStatement .= $atChunkPerlCode.'}';
-							$i = $j-1;
-							last;
-						}
-					}
+					(my $atChunkPerlCode, $splitNum) = processAtChunk( $fieldnamep, ($i+1), $splitNum, $curVName, $linep, $indentp,$vnamesp,$vindex,\%recalls, \%defaults, $cycleThrough, \$startingStatement);
+					$startingStatement .= $atChunkPerlCode.'}';
+					$i = nextSame($indentp, $i) - 1;
 				}
 			} else {
 				die 'ERROR: Illegal end to "Locating" statement on line '.($i+1).".\n";
@@ -459,8 +451,7 @@ sub mainProcessing {
 			}
 			prepFieldNamesAndInitiations($globalDecp,$fieldnamep,\%recalls,\%defaults);
 			return ( $stoppingStatement.$startingStatement.$$closingBrackp,
-				 $dropInsert, $dropClosure,
-				 (($i-1)-$startLine) );
+				 $dropInsert, $dropClosure );
 		} elsif ($$linep[$i] =~ /^Output /i) {
 			if ($recursive) {
 				die "ERROR: It looks like you're trying to output from within a Dipping context. That is not currently supported. (Line ".($i+1)."). Try outputting at the end of a script, and without indenting.\n";
@@ -471,8 +462,7 @@ sub mainProcessing {
 			}
 			prepFieldNamesAndInitiations($globalDecp,$fieldnamep,\%recalls,\%defaults);
 			return ( $stoppingStatement.$startingStatement.$$closingBrackp,
-				 $dropInsert, $dropClosure,
-				 (($i-1)-$startLine) );
+				 $dropInsert, $dropClosure );
 		} elsif ($$linep[$i] =~ /^Outputting /i) {
 			if ($recursive) {
 				die "ERROR: It looks like you're trying to output from within a Dipping context. That is not currently supported. (Line ".($i+1)."). Try outputting at the end of a script, and without indenting.\n";
@@ -506,8 +496,7 @@ KAYA:					for (my $kaya = 0; $kaya < @$fieldnamep; $kaya++) {
 				die 'ERROR: Premature end of file. "Outputting" must be followed by "Order".'."\n";
 			}
 			return ( $stoppingStatement.$startingStatement.$$closingBrackp,
-				 $dropInsert, $dropClosure,
-				 (($i-1)-$startLine) );
+				 $dropInsert, $dropClosure );
 		} else {
 			die 'ERROR: Line '.($i+1).' did not match any expected expression (Reframe, Starting, Stopping, Skipping, Matching, Locating, Splitting, Capture), said '."$$linep[$i]\n";
 		}
@@ -528,9 +517,9 @@ sub processSplit {
 		#TODO consider catching the warning and passing it on to the user rather than using plain exists() - user might want to know capture failed here
 		$startingAdd .= "\t".'if (exists($'.$cycleThrough.'['.$iterationChunk.']) && $'.$cycleThrough.'['.$iterationChunk.'] =~ /'.$regex.'/) {'."\n"
 			       ."\t\t".'my @array'.$splitNum.' = split /'.$regex.'/, $'.$cycleThrough.'['.$iterationChunk.'];'."\n";
-		($splitNum, my $takeChunkPerlCode, my $skipLines) = processTakeChunk($fieldnamep,($i+1), $splitNum, $linep, $indentp, $vnamesp, $vindex, $recallp, $defaultp, $cycleThrough, $startingStatement);
+		($splitNum, my $takeChunkPerlCode) = processTakeChunk($fieldnamep,($i+1), $splitNum, $linep, $indentp, $vnamesp, $vindex, $recallp, $defaultp, $cycleThrough, $startingStatement);
 		$startingAdd .= $takeChunkPerlCode."\t}\n";
-		return($splitNum,$skipLines+1,$startingAdd);
+		return($splitNum,$startingAdd);
 	} else {
 		die 'ERROR: Illegal end to "Splitting" statement on line '.($i+1).", found: $$linep[$i]\n";
 	}
@@ -541,10 +530,8 @@ sub processTakeOptions {
 	my $recall = 0;
 	my $defaultDefined = 0;
 	my $default;
-	my $chunkLength = 0;
 	for (my $i = $startLine; $i < @$linep; $i++) {
-		$chunkLength++;
-		if      ($$linep[$i] =~ /^\s*Cleaning (up )?\//) {
+		if ($$linep[$i] =~ /^\s*Cleaning (up )?\//) {
 			die 'ERROR: Illegal end to "Cleaning" statement on line '.($i+1).", found: $$linep[$i]\n" unless $$linep[$i] =~ /\/$/;
 			my $cleanStatement = $$linep[$i];
 			$cleanStatement =~ s/^\s+Cleaning (up )?//;
@@ -556,7 +543,6 @@ sub processTakeOptions {
 					$replacement =~ s/\'\s*$//;
 				}
 				$cleanStatement .= $replacement.'/';
-				$chunkLength++;
 				$i++;
 			} else {
 				die 'ERROR: "Cleaning" must be followed by "Replace" on line'.($i+2).".\n";
@@ -578,17 +564,15 @@ sub processTakeOptions {
 			$default =~ s/^\s+Default (to )?//;
 			$defaultDefined = 1;
 		} else {
-			return ($chunkLength, \@cleanExpressions, $recall, $defaultDefined, $default);
+			return (\@cleanExpressions, $recall, $defaultDefined, $default);
 		}
 	}
 }
 sub processTakeChunk {
 	my ($fieldnamep,$startLine,$splitNum,$linep,$indentp,$vnamesp,$vindex,$recallp,$defaultp,$cycleThrough,$startingStatement) = @_;
 	my $outputVal = '';
-	my $chunkLength = 0;
 	for (my $i = $startLine; $i < @$linep; $i++) {
 		last if ($$indentp[$i] < $$indentp[$startLine]);
-		$chunkLength++;
 		if ($$linep[$i] =~ /^\s*Take \-?[0-9]+ as [A-Za-z][A-Za-z0-9]*$/) {
 			my @array = split /Take | as /, $$linep[$i];
 			checkInFieldname($fieldnamep,$array[2]);
@@ -603,8 +587,8 @@ sub processTakeChunk {
 			}
 			my @array = split /Taking | as /, $$linep[$i];
 			checkInFieldname($fieldnamep,$array[2]);
-			my ($skipLines, $cleanLinep, $recall, $defaultDefined, $default) = processTakeOptions(($i+1), $linep, $indentp);
-			$i += $skipLines;
+			my ($cleanLinep, $recall, $defaultDefined, $default) = processTakeOptions(($i+1), $linep, $indentp);
+			$i = nextSame($indentp, $i) - 1;
 			$$defaultp{$array[2]} = $default if $defaultDefined;
 			$$recallp{$array[2]} = $recall;
 			$outputVal .= "\t\t".'if (defined($array'.$splitNum.'['.$array[1].'])) {'."\n";
@@ -624,10 +608,9 @@ sub processTakeChunk {
 			my $wantedLine = $$linep[$i];
 			$wantedLine =~ s/^\s*Taking //;
 			if ($$linep[$i+1] =~ /^\s+Splitting at /) {
-				($splitNum,my $splitChunkLength,my $newStartingAdd) = processSplit($fieldnamep,($i+1),$splitNum,$linep,$indentp,'array'.$splitNum,$wantedLine,$vnamesp,$vindex,$recallp,$defaultp,$startingStatement);
+				($splitNum,my $newStartingAdd) = processSplit($fieldnamep,($i+1),$splitNum,$linep,$indentp,'array'.$splitNum,$wantedLine,$vnamesp,$vindex,$recallp,$defaultp,$startingStatement);
 				$outputVal .= $newStartingAdd;
-				$i += $splitChunkLength+1;
-				$chunkLength += $splitChunkLength+1;
+				$i = nextSame($indentp, $i) - 1;
 			}
 		} elsif ($$linep[$i] =~ /^\s*Follow \-?[0-9]+$/) {
 			# TODO switch to http(s) mode if you're in local file mode and encounter http(s) to follow
@@ -667,20 +650,19 @@ sub processTakeChunk {
 			my $dipClosingBrackets = "}}\n";
 			#TODO vindex to be passed as reference?
 			#TODO we still need globalDecp to enable interactive exits (e.g. Locating)
-			my ($dipReturn, $dipDropInsert, $dipDropClosure, $skipLines) =
+			my ($dipReturn, $dipDropInsert, $dipDropClosure) =
 						 mainProcessing($i+1, $linep, $indentp, 1, $vnamesp, $vindex, $fieldnamep, $recallp, $defaultp,
 								\$dipClosingBrackets, \$dipPreamble2,
 								$outputFormat, $$vnamesp[$vindex].'DipLines',
 								\$globalDeclarations);
+			$i = nextSame($indentp, $i) - 1;
 			$outputVal .= $dipPreamble2.$dipBracketOpener.$dipReturn;
-			$i += $skipLines+1;
-			$chunkLength += $skipLines-1;
 		} else {
 			die 'ERROR: Correctly formatted Take, Follow or Dipping statement expected on line '.($i+1).", found: $$linep[$i]\n";
 		}
 		# TODO implement Cutting
 	}
-	return ($splitNum, $outputVal, $chunkLength);
+	return ($splitNum, $outputVal);
 }
 sub processAtChunk {
 	# "Locating" bracket can include Splitting, Capture, Cutting, others? 
@@ -697,9 +679,9 @@ sub processAtChunk {
 			for (my $j = $i+1; $j < @$linep; $j++) {
 				if ($$indentp[$j] > $$indentp[$i]) {
 					if ($$linep[$j] =~ /^\s*Splitting /) {
-						($splitNum, my $skipLines, my $startingAdd) = processSplit($fieldnamep,$j,$splitNum,\@lines,\@indentDepth, $cycleThrough,$lookWhere,$vnamesp,$vindex,$recallp,$defaultp, $startingStatement);
+						($splitNum, my $startingAdd) = processSplit($fieldnamep,$j,$splitNum,\@lines,\@indentDepth, $cycleThrough,$lookWhere,$vnamesp,$vindex,$recallp,$defaultp, $startingStatement);
 						$outputVal .= $startingAdd;
-						$j += $skipLines;
+						$j = nextSame($indentp, $j) - 1;
 					}
 				# TODO implement Cutting
 				} else {
@@ -873,4 +855,12 @@ sub checkAndAddDefaultsRecalls {
 		$recLine .= ");\n";
 	}
 	return ($recLine.$defLine);
+}
+sub nextSame {
+	my ($indentp, $i) = @_;
+	for (my $j = $i+1; $j < @$indentp; $j++) {
+		if ($$indentp[$j] <= $$indentp[$i]) {
+			return $j;
+		}
+	}
 }
