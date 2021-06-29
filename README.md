@@ -13,6 +13,12 @@ Design priorities:
 # Online demo
 A quick live demo can be found at http://chewlang.com
 
+# Synopsis
+	Reading https://foo.bar
+	Splitting at /\<\/?boundary\>/
+	  Take 1 as dataiwant
+	Output tsv+header
+
 # Dependencies
 * Perl 5 (earlier versions untested)
 * Getopt::Long
@@ -38,12 +44,14 @@ While Chew is very permissive with respect to variable naming, it's recommended 
 * Output *format*
   * Obligatory statement to specify output format. The first supported format is "tsv+header". The Output statement must be the last line of a chew file.
 
-## Defining a processing area
+## Setting up one or several processing windows
+This is optional but generally good practice - you avoid accidentally pulling in unwanted data from header or footer material that may not appear in all your targeted files or pages.
+
 * Starting at /*expression*/
-  * Can be used to indicate that nothing prior to a line matching the *Starting at* expression should be processed. The *expression* should be a regular expression.
+  * Can be used once per reading context to indicate that nothing prior to a line matching the *Starting at* expression should be processed. The *expression* should be a regular expression.
 
 * Stopping at /*expression*/
-  * Can be used to indicate that nothing on or after a line matching the *Stopping at* expression should be processed. The *expression* should be a regular expression.
+  * Can be used once per reading context to indicate that nothing on or after a line matching the *Stopping at* expression should be processed. The *expression* should be a regular expression.
 
 * Skipping *number* at /*expression*/
   * Can be used to indicate that processing should "take a break" for ("skip") *number* lines when *expression* is encountered. The *expression* should be a regular expression.
@@ -78,6 +86,13 @@ As HTML in particular is predominantly line break agnostic, some websites are de
 
 When needed, reframing is one of the first things you'll want to instruct Chew to do when you're starting to write a script, and so output from the reframe action will be printed when your *Reframe* line is the last line in your file, to help you check your working. Other previewable statements are discussed in a separate section, below.
 
+## Checking your working using previews
+Reframe and Locating are previewable instructions. We've already discussed Reframe, above.
+
+Leaving Locating as the last line of your file makes Chew display the lines around your line of focus, at the first occurrence within the file. In this way, Chew helps you pick your processing target(s) from within your defined Locating context.
+
+In terms of developing a great user experience especially in the context of an integrated development environment (IDE), having commands provide such previews is a huge added value feature for Chew. Specifically, a line could be selected in the IDE and an excerpt of the chew script executed up to that line, for debugging and without altering the contents of your chew file. Live updates as you type are also possible by the same mechanism.
+
 ## Clean output
 Output data cleaning can also be performed in Chew:
 
@@ -88,6 +103,7 @@ Output data cleaning can also be performed in Chew:
   * When used as a context, *Cleaning up* takes an indented *Replace with* command on the next line:
 
 * Replace with *string*
+  * *String* begins after the first space following "with", and ends at the end of the line. This is currently experimental in that accidental white space at the end of the line will be part of the replacement, and this could in rare cases lead to gremlins that would be hard to debug. However, not having to type out quote marks is nice.
 
 * Drop rows where *fieldname* matches /*expression*/
   * In contrast with Clean, which is applied immediately during data capture, and takes effect on only one field, *Drop rows* is applied just prior to output and drops the entire row across all data fields. To those coming from SQL, the statement will look quite familiar.
@@ -97,13 +113,6 @@ Sometimes, links that you need to follow to get all of your data may have arbitr
 
 * Follow *number*
   * This appends the extract at *number* to the list of files (pages) to be read and processed.
-
-## Checking your working using previews
-Reframe and Locating are previewable instructions. We've already discussed Reframe, above.
-
-Leaving Locating as the last line of your file makes Chew display the lines around your line of focus, at the first occurrence within the file. In this way, Chew helps you pick your processing target(s) from within your defined Locating context.
-
-In terms of developing a great user experience especially in the context of an integrated development environment (IDE), having commands provide such previews is a huge added value feature for Chew. Specifically, a line could be selected in the IDE and an excerpt of the chew script executed up to that line, for debugging and without altering the contents of your chew file. Live updates as you type are also possible by the same mechanism.
 
 ## Advanced topic: Dealing with non-repeated or missing data
 As long as you follow one simple rule, Chew can automatically fill in missing data for you based on what was previously captured. This is useful when using sources that aggregate data under headings, like listing some apple varieties under the heading "Apple" and then listing pear varieties under the heading "Pear", but we'd like to capture whether a variety was an apple or a pear. As long as data is captured in the order in which it appears in the source document (i.e. we instruct Chew to capture the heading on a line above the line where we instruct Chew to capture the data underneath the heading), Chew can correctly assign fruit type to variety, in this example, even though the data is not repeated on the page. To do this, we use the syntax *Recall default*, which is an option for a *Taking* context. Again, this will only work if your capture instructions match the order in which data appears on the page. This should ensure equal column lengths, and Chew will warn if this is not the case.
@@ -133,7 +142,9 @@ Your Perl code can access the captured data via the hash of arrays, *%capturedDa
 **There are some rules for this to work.** For better readability, functions that Chew needs will be placed *after* your own Perl code in the compiled file, along with the call to print warnings. This only works if the Perl code you're adding does not interfere with allowing these functions to be read by Perl.
 
 # Current status of feature creep
-15/20 completed approximately
+16/20 completed approximately
 
 [//]: # (&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;)
+
+Copyright (C) 2020, 2021 Philipp L. Wesche
 
