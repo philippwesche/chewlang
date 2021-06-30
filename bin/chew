@@ -248,10 +248,12 @@ if ($outputFormat) {
 			   .oi(1).'$chewOutputLines[$i] = "";'."\n"
 			   .oi(1).'foreach (@fieldNames) {'."\n"
 			   .oi(2).'if ( defined( ${ $'.$outputVarName.'{$_} }[$i] ) ) {'."\n"
-			   .oi(3).'$chewOutputLines[$i] .= ${ $'.$outputVarName.'{$_} }[$i];    }'."\n"
+			   .oi(3).'$chewOutputLines[$i] .= ${ $'.$outputVarName.'{$_} }[$i];'."\n"
+			   .oi(2).'}'."\n"
 			   .oi(2).'$chewOutputLines[$i] .= "\t";'."\n"    #prevent column slippage by inserting tab even if no data captured for this col
 			   .$dropClosure
-			   .'} }'."\n"
+			   .oi(1).'}'."\n"
+			   .'}'."\n"
 			   .'foreach (@fieldNames) { print "$_\t" }'."\n"
 			   .'print "\n";'."\n"
 			   .'foreach (@chewOutputLines) { if ($_) { print "$_\n" } }'."\n";
