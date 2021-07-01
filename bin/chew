@@ -394,21 +394,18 @@ sub mainProcessing {
 				die "ERROR: Currently no Skipping with Dipping, on line ".($i+1).".\n";
 			}
 			if ($$linep[$i] =~ /\/$/) {
-				unless ($oi == $boi+1) {
-					$oi++;
-				}
 				my $regex = $$linep[$i];
 				$regex =~ s/^\s*Skipping [1-9][0-9]* whenever \///;
 				$regex =~ s/\/$//;
 				$regex = sanitiseRegex($regex);
 				my @array = split /Skipping | whenever /, $$linep[$i];
-				$startingStatement .= oi($boi+1).'if (';
+				$startingStatement .= oi($oi+1).'if (';
 				if ($hasStartStatement) {
 					$startingStatement .= '$processing == 1 && '
 				}
 				$startingStatement .= '$'.$cycleThrough.'[$'.$curVName.'] =~ /'.$regex.'/) {'."\n"
-						    .oi($boi+2).'$'.$curVName.' += '.$array[1].";\n"
-						    .oi($boi+1)."}\n";
+						    .oi($oi+2).'$'.$curVName.' += '.$array[1].";\n"
+						    .oi($oi+1)."}\n";
 			} else {
 				die 'ERROR: Illegal end to "Skipping" statement on line '.($i+1).".\n";
 			}
