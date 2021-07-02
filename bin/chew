@@ -559,10 +559,6 @@ sub processTakeOptions {
 			if ($$linep[$i+1] =~ /^\s+Replace with /) {
 				my $replacement = $$linep[$i+1];
 				$replacement =~ s/^\s+Replace with //;
-				if ($replacement =~ /^\'/ && $replacement =~ /\'\s*$/) { #TODO count quote marks and warn if != 2
-					$replacement =~ s/^\'//;
-					$replacement =~ s/\'\s*$//;
-				}
 				$cleanStatement .= $replacement.'/';
 				$i++;
 			} else {
