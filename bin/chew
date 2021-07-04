@@ -219,7 +219,7 @@ for (my $i = 1; $i < (@lines-1); $i++) {
 my @fieldNames;
 my %recalls;
 my %defaults;
-my ($mainReturn, $dropInsert) = mainProcessing(1, 1, \@lines, \@indentDepth, 0, \@vNames, $vindex, \@fieldNames, \%recalls, \%defaults,
+my $mainReturn = mainProcessing(1, 1, \@lines, \@indentDepth, 0, \@vNames, $vindex, \@fieldNames, \%recalls, \%defaults,
 								\$closingBrackets, \$preamble2,
 								\$outputFormat, 'chewLines',
 								\$globalDeclarations);
@@ -256,7 +256,7 @@ if ($outputFormat) {
 			   .'foreach (@chewOutputLines) { if ($_) { print "$_\n" } }'."\n";
 }
 my $warnLine =	     'warn $chewWarnings if $chewWarnings;'."\n";
-my $output = $preamble1.$globalDeclarations.$preamble2.$bracketOpener.$mainReturn.$dropInsert.$outputPreparation.$outputStatement.$nonChewCode.$warnLine.$funcStr;
+my $output = $preamble1.$globalDeclarations.$preamble2.$bracketOpener.$mainReturn.$outputPreparation.$outputStatement.$nonChewCode.$warnLine.$funcStr;
 
 # adding required subroutines
 if ($output =~ /completeURLchew/) {
@@ -340,8 +340,7 @@ sub mainProcessing {
 	for (my $i = $startLine; $i < @$linep; $i++) {
 		# only when used recursively, i.e. "Dipping into"
 		if ($recursive && $$indentp[$i] < $mainIndent) {
-			return ( $stoppingStatement.$startingStatement.$$closingBrackp,
-				 $dropInsert );
+			return ( $stoppingStatement.$startingStatement.$$closingBrackp.$dropInsert );
 		}
 		if ($$linep[$i] =~ /^\s*Reframe \//) {
 			# TODO make it safer
@@ -473,8 +472,7 @@ sub mainProcessing {
 				die "ERROR: Hand-over is expected to be found without indents, on line ".($i+1).").\n";
 			}
 			prepFieldNamesAndInitiations($globalDecp,$fieldnamep,\%recalls,\%defaults);
-			return ( $stoppingStatement.$startingStatement.$$closingBrackp,
-				 $dropInsert );
+			return ( $stoppingStatement.$startingStatement.$$closingBrackp.$dropInsert );
 		} elsif ($$linep[$i] =~ /^Output /i) {
 			if ($recursive) {
 				die "ERROR: It looks like you're trying to output from within a Dipping context. That is not currently supported. (Line ".($i+1)."). Try outputting at the end of a script, and without indenting.\n";
@@ -484,8 +482,7 @@ sub mainProcessing {
 				die "ERROR: Specified output format not known on line ".($i+1).".\n";
 			}
 			prepFieldNamesAndInitiations($globalDecp,$fieldnamep,\%recalls,\%defaults);
-			return ( $stoppingStatement.$startingStatement.$$closingBrackp,
-				 $dropInsert );
+			return ( $stoppingStatement.$startingStatement.$$closingBrackp.$dropInsert );
 		} elsif ($$linep[$i] =~ /^Outputting /i) {
 			if ($recursive) {
 				die "ERROR: It looks like you're trying to output from within a Dipping context. That is not currently supported. (Line ".($i+1)."). Try outputting at the end of a script, and without indenting.\n";
@@ -518,8 +515,7 @@ KAYA:					for (my $kaya = 0; $kaya < @$fieldnamep; $kaya++) {
 			} else {
 				die 'ERROR: Premature end of file. "Outputting" must be followed by "Order".'."\n";
 			}
-			return ( $stoppingStatement.$startingStatement.$$closingBrackp,
-				 $dropInsert );
+			return ( $stoppingStatement.$startingStatement.$$closingBrackp.$dropInsert );
 		} else {
 			die 'ERROR: Line '.($i+1).' did not match any expected expression (Reframe, Starting, Stopping, Skipping, Matching, Locating, Splitting, Capture), said '."$$linep[$i]\n";
 		}
@@ -679,8 +675,8 @@ sub processTakeChunk {
 			my $bracketVar = '';
 			#TODO vindex to be passed as reference?
 			#TODO we still need globalDecp to enable interactive exits (e.g. Locating)
-			my ($dipReturn, $dipDropInsert) =
-						 mainProcessing($i+1, $oi+3, $linep, $indentp, 1, $vnamesp, $vindex, $fieldnamep, $recallp, $defaultp,
+			my $dipReturn = mainProcessing($i+1, $oi+3, $linep, $indentp, 1, $vnamesp, $vindex,
+								$fieldnamep, $recallp, $defaultp,
 								\$bracketVar, \$dipPreamble2,
 								$outputFormat, $$vnamesp[$vindex].'DipLines',
 								$globalDecp);
