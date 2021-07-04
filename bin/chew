@@ -139,7 +139,6 @@ $closingBrackets =    oi(1)."}\n".$closingBrackets;
 my $indentLevel = 0;
 my %stillAllowed = ('Starting',1,'Stopping',1); # only one of each of these #TODO
 my %requireOneOf = ('Starting',1,'Stopping',1,'Matching',1,'Cutting',1); #TODO
-my $regex;
 
 # detect the indenting pattern used in the chew file
 my $indentPattern = '';
@@ -220,14 +219,14 @@ for (my $i = 1; $i < (@lines-1); $i++) {
 my @fieldNames;
 my %recalls;
 my %defaults;
-my ($mainReturn, $dropInsert, $dropClosure) = mainProcessing(1, 1, \@lines, \@indentDepth, 0, \@vNames, $vindex, \@fieldNames, \%recalls, \%defaults,
+my ($mainReturn, $dropInsert) = mainProcessing(1, 1, \@lines, \@indentDepth, 0, \@vNames, $vindex, \@fieldNames, \%recalls, \%defaults,
 								\$closingBrackets, \$preamble2,
 								\$outputFormat, 'chewLines',
 								\$globalDeclarations);
 # CONSTRUCTING OUTPUT
-my $outputPreparation = 'my $outputRowCount = 0;'."\n"
-		       .'my $chewWarnings = "";'."\n"
-		       .'foreach (@fieldNames) {'."\n"
+$globalDeclarations  .= 'my $outputRowCount = 0;'."\n"
+		       .'my $chewWarnings = "";'."\n";
+my $outputPreparation = 'foreach (@fieldNames) {'."\n"
 		       .oi(1).'if ( $chewFieldInitiations{$_} ) {'."\n"
 		       .oi(2).'if ( $outputRowCount != 0 && $outputRowCount != @{ $'.$outputVarName.'{$_} } ) {'."\n"
 		       .oi(3).'$chewWarnings .='."\n"
@@ -242,16 +241,16 @@ my $outputPreparation = 'my $outputRowCount = 0;'."\n"
 		       .'}'."\n";
 my $outputStatement = '';
 if ($outputFormat) {
+	#my $aoi = $dropInsert ? 1 : 0;
+	my $aoi = 0;
 	$outputStatement =  'my @chewOutputLines;'."\n"
 			   .'for (my $i = 0; $i < $outputRowCount; $i++) {'."\n"
-			   .$dropInsert
-			   .oi(1).'$chewOutputLines[$i] = "";'."\n"
-			   .oi(1).'foreach (@fieldNames) {'."\n"
-			   .oi(2).'if ( defined( ${ $'.$outputVarName.'{$_} }[$i] ) ) {'."\n"
-			   .oi(3).'$chewOutputLines[$i] .= ${ $'.$outputVarName.'{$_} }[$i];'."\n"
-			   .oi(2).'}'."\n"
-			   .oi(2).'$chewOutputLines[$i] .= "\t";'."\n"    #prevent column slippage by inserting tab even if no data captured for this col
-			   .$dropClosure
+			   .oi($aoi+1).'$chewOutputLines[$i] = "";'."\n"
+			   .oi($aoi+1).'foreach (@fieldNames) {'."\n"
+			   .oi($aoi+2).'if ( defined( ${ $'.$outputVarName.'{$_} }[$i] ) ) {'."\n"
+			   .oi($aoi+3).'$chewOutputLines[$i] .= ${ $'.$outputVarName.'{$_} }[$i];'."\n"
+			   .oi($aoi+2).'}'."\n"
+			   .oi($aoi+2).'$chewOutputLines[$i] .= "\t";'."\n"    #prevent column slippage by inserting tab even if no data captured for this col
 			   .oi(1).'}'."\n"
 			   .'}'."\n"
 			   .'foreach (@fieldNames) { print "$_\t" }'."\n"
@@ -259,7 +258,7 @@ if ($outputFormat) {
 			   .'foreach (@chewOutputLines) { if ($_) { print "$_\n" } }'."\n";
 }
 my $warnLine =	     'warn $chewWarnings if $chewWarnings;'."\n";
-my $output = $preamble1.$globalDeclarations.$preamble2.$bracketOpener.$mainReturn.$outputPreparation.$outputStatement.$nonChewCode.$warnLine.$funcStr;
+my $output = $preamble1.$globalDeclarations.$preamble2.$bracketOpener.$mainReturn.$dropInsert.$outputPreparation.$outputStatement.$nonChewCode.$warnLine.$funcStr;
 
 # adding required subroutines
 if ($output =~ /completeURLchew/) {
@@ -337,7 +336,6 @@ sub mainProcessing {
 	my $hasStartStatement = 0;
 	my $mainIndent = $$indentp[$startLine];
 	my $dropInsert = '';
-	my $dropClosure = '';
 	my $stoppingStatement = '';
 	my $startingStatement = '';
 	my $boi = $oi;
@@ -345,7 +343,7 @@ sub mainProcessing {
 		# only when used recursively, i.e. "Dipping into"
 		if ($recursive && $$indentp[$i] < $mainIndent) {
 			return ( $stoppingStatement.$startingStatement.$$closingBrackp,
-				 $dropInsert, $dropClosure );
+				 $dropInsert );
 		}
 		if ($$linep[$i] =~ /^\s*Reframe \//) {
 			# TODO make it safer
@@ -461,8 +459,14 @@ sub mainProcessing {
 				$splitRes[5] =~ s/^\///;
 				$splitRes[5] =~ s/\/$//;
 				my $regex = sanitiseRegex($splitRes[5]);
-				$dropInsert .= oi(1).'unless ($'.$outputVarName.'{'.$wantedField.'}[$i] =~ /'.$regex.'/) {'."\n";
-				$dropClosure .= "}\n";
+				$dropInsert = 'for (my $i = 0; $i < @{ $'.$outputVarName.'{'.$wantedField.'} }; $i++) {'."\n"
+						    .oi(1).'if ($'.$outputVarName.'{'.$wantedField.'}[$i] =~ /'.$regex.'/) {'."\n"
+						    .oi(2).'foreach (@fieldNames) {'."\n"
+						    .oi(3).'splice @{$'.$outputVarName.'{$_}}, $i, 1;'."\n"
+						    .oi(2)."}\n"
+						    .oi(2).'$i--;'."\n"
+						    .oi(1)."}\n"
+						    ."}\n";
 			} else {
 				die 'ERROR: Illegal end to "Drop", "Remove" or "Delete" statement on line '.($i+1).".\n";
 			}
@@ -472,7 +476,7 @@ sub mainProcessing {
 			}
 			prepFieldNamesAndInitiations($globalDecp,$fieldnamep,\%recalls,\%defaults);
 			return ( $stoppingStatement.$startingStatement.$$closingBrackp,
-				 $dropInsert, $dropClosure );
+				 $dropInsert );
 		} elsif ($$linep[$i] =~ /^Output /i) {
 			if ($recursive) {
 				die "ERROR: It looks like you're trying to output from within a Dipping context. That is not currently supported. (Line ".($i+1)."). Try outputting at the end of a script, and without indenting.\n";
@@ -483,7 +487,7 @@ sub mainProcessing {
 			}
 			prepFieldNamesAndInitiations($globalDecp,$fieldnamep,\%recalls,\%defaults);
 			return ( $stoppingStatement.$startingStatement.$$closingBrackp,
-				 $dropInsert, $dropClosure );
+				 $dropInsert );
 		} elsif ($$linep[$i] =~ /^Outputting /i) {
 			if ($recursive) {
 				die "ERROR: It looks like you're trying to output from within a Dipping context. That is not currently supported. (Line ".($i+1)."). Try outputting at the end of a script, and without indenting.\n";
@@ -517,7 +521,7 @@ KAYA:					for (my $kaya = 0; $kaya < @$fieldnamep; $kaya++) {
 				die 'ERROR: Premature end of file. "Outputting" must be followed by "Order".'."\n";
 			}
 			return ( $stoppingStatement.$startingStatement.$$closingBrackp,
-				 $dropInsert, $dropClosure );
+				 $dropInsert );
 		} else {
 			die 'ERROR: Line '.($i+1).' did not match any expected expression (Reframe, Starting, Stopping, Skipping, Matching, Locating, Splitting, Capture), said '."$$linep[$i]\n";
 		}
@@ -530,7 +534,11 @@ sub processSplit {
 		my $regex = extractRegex('Splitting at',$$linep[$i]);
 		my $iterationChunk;
 		if ($cycleThrough =~ /lines/i) {
-			$iterationChunk = '$'.$$vnamesp[$vindex-1].'+'.$lineDeviation;
+			if ($lineDeviation =~ /^[+-]/) {
+				$iterationChunk = '$'.$$vnamesp[$vindex-1].$lineDeviation;
+			} else {
+				$iterationChunk = '$'.$$vnamesp[$vindex-1].'+'.$lineDeviation;
+			}
 		} else{
 			$iterationChunk = $lineDeviation;
 		}
@@ -593,6 +601,7 @@ sub processTakeChunk {
 		if ($$linep[$i] =~ /^\s*Take \-?[0-9]+ as [A-Za-z][A-Za-z0-9]*$/) {
 			my @array = split /Take | as /, $$linep[$i];
 			checkInFieldname($fieldnamep,$array[2]);
+			#TODO $outputVarName must be passed to this subroutine
 			$outputVal .= oi($oi+2).'$chewFieldInitiations{'.$array[2].'}++ if defined($array'.$splitNum.'['.$array[1].']);'."\n"
 				     .oi($oi+2).'push @{ $'.$outputVarName.'{'.$array[2].'} }, $array'.$splitNum.'['.$array[1].'] if defined($array'.$splitNum.'['.$array[1].']);'."\n";
 		} elsif ($$linep[$i] =~ /^\s*Taking \-?[0-9]+ as [A-Za-z][A-Za-z0-9]*$/) {
@@ -672,7 +681,7 @@ sub processTakeChunk {
 			my $bracketVar = '';
 			#TODO vindex to be passed as reference?
 			#TODO we still need globalDecp to enable interactive exits (e.g. Locating)
-			my ($dipReturn, $dipDropInsert, $dipDropClosure) =
+			my ($dipReturn, $dipDropInsert) =
 						 mainProcessing($i+1, $oi+3, $linep, $indentp, 1, $vnamesp, $vindex, $fieldnamep, $recallp, $defaultp,
 								\$bracketVar, \$dipPreamble2,
 								$outputFormat, $$vnamesp[$vindex].'DipLines',
