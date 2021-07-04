@@ -241,16 +241,14 @@ my $outputPreparation = 'foreach (@fieldNames) {'."\n"
 		       .'}'."\n";
 my $outputStatement = '';
 if ($outputFormat) {
-	#my $aoi = $dropInsert ? 1 : 0;
-	my $aoi = 0;
 	$outputStatement =  'my @chewOutputLines;'."\n"
 			   .'for (my $i = 0; $i < $outputRowCount; $i++) {'."\n"
-			   .oi($aoi+1).'$chewOutputLines[$i] = "";'."\n"
-			   .oi($aoi+1).'foreach (@fieldNames) {'."\n"
-			   .oi($aoi+2).'if ( defined( ${ $'.$outputVarName.'{$_} }[$i] ) ) {'."\n"
-			   .oi($aoi+3).'$chewOutputLines[$i] .= ${ $'.$outputVarName.'{$_} }[$i];'."\n"
-			   .oi($aoi+2).'}'."\n"
-			   .oi($aoi+2).'$chewOutputLines[$i] .= "\t";'."\n"    #prevent column slippage by inserting tab even if no data captured for this col
+			   .oi(1).'$chewOutputLines[$i] = "";'."\n"
+			   .oi(1).'foreach (@fieldNames) {'."\n"
+			   .oi(2).'if ( defined( ${ $'.$outputVarName.'{$_} }[$i] ) ) {'."\n"
+			   .oi(3).'$chewOutputLines[$i] .= ${ $'.$outputVarName.'{$_} }[$i];'."\n"
+			   .oi(2).'}'."\n"
+			   .oi(2).'$chewOutputLines[$i] .= "\t";'."\n"    #prevent column slippage by inserting tab even if no data captured for this col
 			   .oi(1).'}'."\n"
 			   .'}'."\n"
 			   .'foreach (@fieldNames) { print "$_\t" }'."\n"
@@ -460,13 +458,13 @@ sub mainProcessing {
 				$splitRes[5] =~ s/\/$//;
 				my $regex = sanitiseRegex($splitRes[5]);
 				$dropInsert = 'for (my $i = 0; $i < @{ $'.$outputVarName.'{'.$wantedField.'} }; $i++) {'."\n"
-						    .oi(1).'if ($'.$outputVarName.'{'.$wantedField.'}[$i] =~ /'.$regex.'/) {'."\n"
-						    .oi(2).'foreach (@fieldNames) {'."\n"
-						    .oi(3).'splice @{$'.$outputVarName.'{$_}}, $i, 1;'."\n"
-						    .oi(2)."}\n"
-						    .oi(2).'$i--;'."\n"
-						    .oi(1)."}\n"
-						    ."}\n";
+					      .oi(1).'if ($'.$outputVarName.'{'.$wantedField.'}[$i] =~ /'.$regex.'/) {'."\n"
+					      .oi(2).'foreach (@fieldNames) {'."\n"
+					      .oi(3).'splice @{$'.$outputVarName.'{$_}}, $i, 1;'."\n"
+					      .oi(2)."}\n"
+					      .oi(2).'$i--;'."\n"
+					      .oi(1)."}\n"
+					      ."}\n";
 			} else {
 				die 'ERROR: Illegal end to "Drop", "Remove" or "Delete" statement on line '.($i+1).".\n";
 			}
