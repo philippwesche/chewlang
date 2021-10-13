@@ -9,6 +9,7 @@
 # Design priorities:
 # - Short, readable code
 # - Ease of learning
+# - Avoidance of non-alphanumeric (modal) characters when reasonably possible
 # - Modelled after natural English usage
 # - Experimental introduction of "contexts" to replace/unify flow control and parameters
 #
@@ -496,10 +497,10 @@ sub mainProcessing {
 					my $orderline = $$linep[$i+1];
 					$orderline =~ s/^\s*Order //;
 					my @order = split /\s*\,\s*/, $orderline;
-KAYA:					for (my $kaya = 0; $kaya < @$fieldnamep; $kaya++) {
+					for (my $kaya = 0; $kaya < @$fieldnamep; $kaya++) {
 						for (my $jayden = 0; $jayden < @order; $jayden++) {
 							if ($order[$jayden] eq $$fieldnamep[$kaya]) {
-								next KAYA;
+								last;
 							}
 							if ($jayden == @order-1) {
 								die 'ERROR: "Order" statement on line '.($i+2).' does not match the list of names of captured fields. Should contain same items in any order: '."@$fieldnamep\n";
@@ -674,7 +675,6 @@ sub processTakeChunk {
 			my $dipClosingBrackets = oi($oi+3)."}\n".oi($oi+2)."}\n";
 			my $bracketVar = '';
 			#TODO vindex to be passed as reference?
-			#TODO we still need globalDecp to enable interactive exits (e.g. Locating)
 			my $dipReturn = mainProcessing($i+1, $oi+3, $linep, $indentp, 1, $vnamesp, $vindex,
 								$fieldnamep, $recallp, $defaultp,
 								\$bracketVar, \$dipPreamble2,
