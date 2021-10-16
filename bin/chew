@@ -410,7 +410,7 @@ sub mainProcessing {
 			#TODO make it capture all matching strings on a given line, not just the first one
 			#     then offer the option to catch only one, or otherwise limit catching (e.g. once per page)
 			#TODO also offer Capture as an option within Split and Locating contexts (just like Cutting)
-			if ($$linep[$i] =~ /\/ as [A-Za-z][A-Za-z0-9]*$/) {
+			if ($$linep[$i] =~ /\/ as [A-Za-z][A-Za-z0-9_]*$/) {
 				my @array1 = split /Capture \//, $$linep[$i];
 				my @array2 = split /\/ as /, $array1[1];
 				my $regex = join '/ as ', @array2[0..(@array2-2)];
@@ -447,7 +447,7 @@ sub mainProcessing {
 			} else {
 				die 'ERROR: Illegal end to "Locating" statement on line '.($i+1).".\n";
 			}
-		} elsif ($recursive == 0 && $$linep[$i] =~ /^\s*(Drop|Remove|Delete|Erase) rows? (where|when|whenever|wherever) [A-Za-z][A-Za-z0-9]* matches \//) {
+		} elsif ($recursive == 0 && $$linep[$i] =~ /^\s*(Drop|Remove|Delete|Erase) rows? (where|when|whenever|wherever) [A-Za-z][A-Za-z0-9_]* matches \//) {
 			if ($recursive) {
 				die "ERROR: Applying drop criteria to only the data obtained by Dipping, is not currently supported, at line ".($i+1).".\n";
 			}
@@ -593,13 +593,13 @@ sub processTakeChunk {
 	my $outputVal = '';
 	for (my $i = $startLine; $i < @$linep; $i++) {
 		last if ($$indentp[$i] < $$indentp[$startLine]);
-		if ($$linep[$i] =~ /^\s*Take \-?[0-9]+ as [A-Za-z][A-Za-z0-9]*$/) {
+		if ($$linep[$i] =~ /^\s*Take \-?[0-9]+ as [A-Za-z][A-Za-z0-9_]*$/) {
 			my @array = split /Take | as /, $$linep[$i];
 			checkInFieldname($fieldnamep,$array[2]);
 			#TODO $outputVarName must be passed to this subroutine
 			$outputVal .= oi($oi+2).'$chewFieldInitiations{'.$array[2].'}++ if defined($array'.$splitNum.'['.$array[1].']);'."\n"
 				     .oi($oi+2).'push @{ $'.$outputVarName.'{'.$array[2].'} }, $array'.$splitNum.'['.$array[1].'] if defined($array'.$splitNum.'['.$array[1].']);'."\n";
-		} elsif ($$linep[$i] =~ /^\s*Taking \-?[0-9]+ as [A-Za-z][A-Za-z0-9]*$/) {
+		} elsif ($$linep[$i] =~ /^\s*Taking \-?[0-9]+ as [A-Za-z][A-Za-z0-9_]*$/) {
 			unless ( $$indentp[$i+1] == $$indentp[$i]+1
 			      && (   ($$linep[$i+1]   =~ /^\s+Clean(ing)? (up)? \// && $$linep[$i+1]   =~ /\/$/)
 				  ||  $$linep[$i+1]   =~ /^\s+Default (to)? /
